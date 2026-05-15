@@ -1,4 +1,4 @@
-import type { Finding, RunResponse } from "./types";
+import type { Finding, RunResponse, Stats } from "./types";
 
 const BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 
@@ -9,6 +9,12 @@ export async function runEngine(
   const url = `${BASE}/api/run?enable_llm=${enableLlm}&model=${encodeURIComponent(model)}`;
   const r = await fetch(url, { method: "POST" });
   if (!r.ok) throw new Error(`run failed: ${r.status}`);
+  return await r.json();
+}
+
+export async function fetchStats(): Promise<Stats> {
+  const r = await fetch(`${BASE}/api/stats`);
+  if (!r.ok) throw new Error(`stats failed: ${r.status}`);
   return await r.json();
 }
 

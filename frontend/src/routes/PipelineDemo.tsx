@@ -1,49 +1,64 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { fetchCsv, parseCsv, runEngine } from "../api";
-import { ChartTemplate } from "../components/ChartTemplate";
 import { SeverityChip } from "../components/SeverityBadge";
 import { SkeletonGrid } from "../components/Skeleton";
 import type { Finding } from "../types";
+import { SEV_RANK } from "../ui/tokens";
 
-const SUBJECT = "SUBJ001";
-const VISIT = "Week 16";
-const VISIT_DATE = "2026-04-25";
-
-interface PipelineData {
-  ecrfFollowup: Record<string, string>[];
-  ecrfDisease: Record<string, string>[];
+interface CsvData {
   tu: Record<string, string>[];
   tr: Record<string, string>[];
   rs: Record<string, string>[];
-  findings: Finding[];
+  ecrfBaseline: Record<string, string>[];
+  ecrfFollowup: Record<string, string>[];
+  ecrfDisease: Record<string, string>[];
 }
 
 export function PipelineDemo() {
-  const [data, setData] = useState<PipelineData | null>(null);
+  const [csv, setCsv] = useState<CsvData | null>(null);
+  const [findings, setFindings] = useState<Finding[] | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [drilldown, setDrilldown] = useState<Finding | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [ef, ed, tu, tr, rs, run] = await Promise.all([
-          fetchCsv("ecrf_followup.csv").then(parseCsv),
-          fetchCsv("ecrf_disease_response.csv").then(parseCsv),
+        const [tu, tr, rs, eb, ef, ed, run] = await Promise.all([
           fetchCsv("tu.csv").then(parseCsv),
           fetchCsv("tr.csv").then(parseCsv),
           fetchCsv("rs.csv").then(parseCsv),
+          fetchCsv("ecrf_baseline.csv").then(parseCsv),
+          fetchCsv("ecrf_followup.csv").then(parseCsv),
+          fetchCsv("ecrf_disease_response.csv").then(parseCsv),
           runEngine(true),
         ]);
         if (cancelled) return;
-        setData({
-          ecrfFollowup: ef,
-          ecrfDisease: ed,
+        setCsv({
           tu,
           tr,
           rs,
-          findings: run.findings,
+          ecrfBaseline: eb,
+          ecrfFollowup: ef,
+          ecrfDisease: ed,
         });
+        setFindings(run.findings);
+        const defaultId =
+          run.findings.find(
+            (f) =>
+              f.rule_id === "TR-RS-001" &&
+              f.subject_id === "SUBJ001" &&
+              f.visit === "Week 16",
+          )?.rule_id ?? run.findings[0]?.rule_id;
+        const defaultKey = run.findings.find(
+          (f) =>
+            f.rule_id === "TR-RS-001" &&
+            f.subject_id === "SUBJ001" &&
+            f.visit === "Week 16",
+        );
+        setSelected(defaultKey ? findingKey(defaultKey) : keyAt(run.findings, 0));
+        void defaultId;
       } catch (e) {
         if (!cancelled) setErr(String(e));
       }
@@ -53,528 +68,609 @@ export function PipelineDemo() {
     };
   }, []);
 
+  const orderedFindings = useMemo(
+    () =>
+      [...(findings || [])].sort((a, b) => {
+        const r = SEV_RANK[b.severity] - SEV_RANK[a.severity];
+        if (r !== 0) return r;
+        const s = a.subject_id.localeCompare(b.subject_id);
+        if (s !== 0) return s;
+        return a.rule_id.localeCompare(b.rule_id);
+      }),
+    [findings],
+  );
+
+  const current = useMemo(
+    () => orderedFindings.find((f) => findingKey(f) === selected) || null,
+    [orderedFindings, selected],
+  );
+
   return (
-    <div className="flex flex-col h-full">
-      <header className="border-b border-slate-200 bg-white px-6 h-12 flex items-center gap-3 shrink-0">
-        <h1 className="text-sm font-semibold">Pipeline</h1>
-        <span className="text-2xs text-slate-500">
-          End-to-end view of one visit
-        </span>
-        <span className="ml-auto text-2xs mono text-slate-500">
-          <span className="text-slate-900">{SUBJECT}</span>
-          {" / "}
-          <span className="text-slate-900">{VISIT}</span>
-          {" / "}
-          <span className="text-slate-700">{VISIT_DATE}</span>
-        </span>
+    <div className="min-h-full bg-[#fafaf8]">
+      <header className="border-b border-stone-200 bg-white">
+        <div className="max-w-6xl mx-auto px-8 py-5">
+          <div className="kicker mb-1">How a finding gets caught</div>
+          <h1 className="text-[24px] leading-tight serif font-medium">
+            Pipeline trace
+          </h1>
+          <p className="text-sm text-slate-600 mt-1.5 max-w-2xl">
+            Walk one finding from the coordinator's entry through SDTM
+            mapping with lineage, through the deterministic rule that fired,
+            to the plain-English message we showed the coordinator.
+          </p>
+          <div className="mt-4 flex items-center gap-3">
+            <label className="text-2xs uppercase tracking-wider text-slate-500 font-medium">
+              Trace
+            </label>
+            <select
+              className="field w-[420px] h-9 text-sm"
+              value={selected ?? ""}
+              onChange={(e) => setSelected(e.target.value)}
+            >
+              {orderedFindings.map((f) => (
+                <option key={findingKey(f)} value={findingKey(f)}>
+                  [{f.severity[0]}] {f.rule_id} · {f.subject_id}{" "}
+                  {f.visit ? `· ${f.visit}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto bg-slate-50">
-        <div className="max-w-5xl mx-auto px-8 py-8 space-y-12">
-          {err && (
-            <div className="text-sm text-sev-critical-800 bg-sev-critical-50 border border-sev-critical-300 rounded p-2">
-              {err}
-            </div>
-          )}
-          {!data && !err && (
-            <div className="space-y-3">
-              <div className="text-2xs text-slate-500">
-                Loading SUBJ001 Week 16 from the API…
-              </div>
-              <SkeletonGrid cols={6} rows={5} />
-            </div>
-          )}
-          {data && (
-            <>
-              <PanelEcrf data={data} />
-              <PanelConversion data={data} />
-              <PanelCheck data={data} onDrill={setDrilldown} />
-            </>
-          )}
-        </div>
+      <div className="max-w-6xl mx-auto px-8 py-8">
+        {err && (
+          <div className="panel border-sev-critical-300 bg-sev-critical-50 text-sev-critical-800 text-sm p-3 mb-4">
+            {err}
+          </div>
+        )}
+        {!csv || !current ? (
+          <SkeletonGrid cols={6} rows={5} />
+        ) : (
+          <Trace finding={current} csv={csv} />
+        )}
       </div>
-
-      {drilldown && (
-        <DrilldownDrawer
-          finding={drilldown}
-          onClose={() => setDrilldown(null)}
-        />
-      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-function PanelHeader({
-  step,
+function Trace({ finding, csv }: { finding: Finding; csv: CsvData }) {
+  return (
+    <div className="relative">
+      <div className="absolute left-[18px] top-3 bottom-3 w-px bg-stone-200" />
+      <Step
+        n={1}
+        title="Coordinator entry"
+        sub="What the site coordinator typed into the eCRF for this visit."
+      >
+        <Step1 finding={finding} csv={csv} />
+      </Step>
+      <Step
+        n={2}
+        title="Mapping to SDTM"
+        sub="Each eCRF entry becomes one or more SDTM rows. Lineage columns carry the form and field forward."
+      >
+        <Step2 finding={finding} csv={csv} />
+      </Step>
+      <Step
+        n={3}
+        title="Rule fired"
+        sub="The deterministic engine executes; here's the math, exactly as written."
+      >
+        <Step3 finding={finding} />
+      </Step>
+      <Step
+        n={4}
+        title="Translated for the coordinator"
+        sub="Stage 5 renders the Finding in plain English with concrete next steps."
+        last
+      >
+        <Step4 finding={finding} />
+      </Step>
+    </div>
+  );
+}
+
+function Step({
+  n,
   title,
-  hint,
+  sub,
+  last,
+  children,
 }: {
-  step: 1 | 2 | 3;
+  n: number;
   title: string;
-  hint: string;
+  sub: string;
+  last?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-3 mb-4">
-      <div className="mono text-2xs font-semibold w-6 h-6 inline-flex items-center justify-center rounded-full bg-accent-700 text-white shrink-0 mt-0.5">
-        {step}
+    <section className={`pl-12 relative ${last ? "" : "pb-10"}`}>
+      <div className="absolute left-0 top-0 w-10 flex justify-center">
+        <span className="w-9 h-9 inline-flex items-center justify-center bg-white border border-stone-300 rounded-full text-sm font-semibold mono text-slate-700 shadow-sm">
+          {n}
+        </span>
       </div>
-      <div>
-        <h2 className="text-base font-semibold leading-snug">{title}</h2>
-        <p className="text-sm text-slate-600 mt-0.5 leading-snug max-w-2xl">
-          {hint}
+      <div className="pb-3">
+        <h2 className="text-base font-semibold leading-tight">{title}</h2>
+        <p className="text-2xs text-slate-500 mt-0.5 leading-snug max-w-2xl">
+          {sub}
         </p>
       </div>
-    </div>
-  );
-}
-
-// --- Panel 1: eCRF data ---------------------------------------------------
-
-function PanelEcrf({ data }: { data: PipelineData }) {
-  const tumorRows = data.ecrfFollowup
-    .filter((r) => r.subject_id === SUBJECT && r.visit === VISIT)
-    .map((r) => ({
-      Lesion: r.lesion_number,
-      Category: r.lesion_category,
-      Description: r.lesion_description,
-      Diameter:
-        r.measurement_value && r.measurement_unit_raw
-          ? `${r.measurement_value} ${r.measurement_unit_raw}`
-          : "—",
-      Status: r.lesion_status,
-      Method: r.assessment_method_raw,
-    }));
-  const responseRow = data.ecrfDisease.find(
-    (r) => r.subject_id === SUBJECT && r.visit === VISIT,
-  );
-  const responseTable = responseRow
-    ? [
-        {
-          "Target response": responseRow.target_lesion_response_raw,
-          "Non-target response": responseRow.non_target_lesion_response_raw,
-          "New lesions": responseRow.new_lesion_response_raw,
-          "Overall response": responseRow.overall_response_raw,
-        },
-      ]
-    : [];
-
-  return (
-    <section>
-      <PanelHeader
-        step={1}
-        title="eCRF data"
-        hint="What the coordinator entered for this visit. Two forms: Tumor Assessment and Disease Response."
-      />
-      <div className="space-y-4">
-        <CleanTable
-          caption="Tumor Assessment · Follow-up Tumor Assessment"
-          rows={tumorRows}
-        />
-        <CleanTable
-          caption="Disease Response · Disease Response / RECIST Assessment"
-          rows={responseTable}
-        />
-      </div>
+      <div>{children}</div>
     </section>
   );
 }
 
-function CleanTable({
-  caption,
-  rows,
-}: {
-  caption: string;
-  rows: Record<string, string>[];
-}) {
-  if (rows.length === 0) return null;
-  const cols = Object.keys(rows[0]);
-  return (
-    <div className="panel overflow-hidden">
-      <div className="px-4 py-2 border-b border-slate-200 bg-slate-50">
-        <div className="text-2xs font-medium text-slate-600">{caption}</div>
+// --- Step 1 — coordinator entry ------------------------------------------
+
+function Step1({ finding, csv }: { finding: Finding; csv: CsvData }) {
+  const rows = ecrfRowsForFinding(finding, csv);
+  if (rows.length === 0)
+    return (
+      <div className="text-2xs text-slate-500 italic">
+        No specific eCRF row pinned for this finding.
       </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-slate-200">
-            {cols.map((c) => (
-              <th
-                key={c}
-                className="text-left px-4 py-2 text-2xs font-medium text-slate-500 uppercase tracking-wider"
-              >
-                {c}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr
-              key={i}
-              className="border-b border-slate-100 last:border-b-0"
-            >
-              {cols.map((c) => (
-                <td key={c} className="px-4 py-2.5 mono text-2xs text-slate-700">
-                  {r[c]}
-                </td>
+    );
+
+  const highlight = ecrfHighlightField(finding);
+
+  return (
+    <div className="panel p-4">
+      <div className="text-2xs text-slate-600 mb-3">
+        From <span className="mono text-slate-900">{finding.lineage.form}</span>{" "}
+        for <span className="mono text-slate-900">{finding.subject_id}</span>{" "}
+        {finding.visit && (
+          <>
+            at <span className="mono text-slate-900">{finding.visit}</span>
+          </>
+        )}
+        .
+      </div>
+      <div className="border border-stone-200 rounded overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-stone-50 border-b border-stone-200">
+              {Object.keys(rows[0]).map((c) => (
+                <th
+                  key={c}
+                  className={`text-left px-3 py-1.5 kicker ${
+                    c === highlight ? "text-accent-700" : ""
+                  }`}
+                >
+                  {fieldLabel(c)}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// --- Panel 2: Conversion to SDTM ------------------------------------------
-
-function PanelConversion({ data }: { data: PipelineData }) {
-  const tumorEcrf = data.ecrfFollowup.find(
-    (r) =>
-      r.subject_id === SUBJECT && r.visit === VISIT && r.lesion_number === "T01",
-  );
-  const tumorTr = data.tr
-    .filter(
-      (r) =>
-        r.USUBJID === SUBJECT && r.VISIT === VISIT && r.TRLNKID === "T01",
-    )
-    .map((r) => ({
-      record: r.record_id,
-      domain: r.DOMAIN,
-      lesion: r.TRLNKID,
-      test: r.TRTESTCD,
-      result: r.TRSTRESC || r.TRORRES,
-      unit: r.TRSTRESU || "",
-      source_ecrf_form: r.source_ecrf_form,
-      source_field: r.source_field,
-    }));
-
-  const responseEcrf = data.ecrfDisease.find(
-    (r) => r.subject_id === SUBJECT && r.visit === VISIT,
-  );
-  const responseRs = data.rs
-    .filter((r) => r.USUBJID === SUBJECT && r.VISIT === VISIT)
-    .map((r) => ({
-      record: r.record_id,
-      domain: r.DOMAIN,
-      test: r.RSTESTCD,
-      raw: r.RSORRES,
-      std: r.RSSTRESC,
-      source_ecrf_form: r.source_ecrf_form,
-      source_field: r.source_field,
-    }));
-
-  return (
-    <section>
-      <PanelHeader
-        step={2}
-        title="Conversion to SDTM"
-        hint="Each coordinator entry becomes one or more SDTM rows. Every row carries its lineage back to the form and field it came from — that's how findings later speak the coordinator's language."
-      />
-
-      <ConversionPair
-        heading="Tumor measurement"
-        note="One T01 measurement on the Follow-up form becomes a DIAMETER row plus a TUMSTATE row in the TR domain."
-        ecrfLabel="Follow-up Tumor Assessment"
-        ecrfFields={
-          tumorEcrf
-            ? [
-                ["Lesion", tumorEcrf.lesion_number],
-                [
-                  "Diameter",
-                  `${tumorEcrf.measurement_value} ${tumorEcrf.measurement_unit_raw}`,
-                ],
-                ["Status", tumorEcrf.lesion_status],
-                ["Method", tumorEcrf.assessment_method_raw],
-              ]
-            : []
-        }
-        sdtmLabel="TR · Tumor Results"
-        sdtmRows={tumorTr.map((r) => ({
-          record_id: r.record,
-          TRLNKID: r.lesion,
-          TRTESTCD: r.test,
-          TRSTRESC: `${r.result}${r.unit ? " " + r.unit : ""}`,
-          source_ecrf_form: r.source_ecrf_form,
-          source_field: r.source_field,
-        }))}
-        lineageKeys={["source_ecrf_form", "source_field"]}
-      />
-
-      <div className="h-4" />
-
-      <ConversionPair
-        heading="Disease response"
-        note="Four dropdown picks on the Disease Response form become four RS rows. Standardization (Partial Response → PR) happens at the same step."
-        ecrfLabel="Disease Response / RECIST Assessment"
-        ecrfFields={
-          responseEcrf
-            ? [
-                ["Target response", responseEcrf.target_lesion_response_raw],
-                ["Non-target response", responseEcrf.non_target_lesion_response_raw],
-                ["New lesions", responseEcrf.new_lesion_response_raw],
-                ["Overall response", responseEcrf.overall_response_raw],
-              ]
-            : []
-        }
-        sdtmLabel="RS · Disease Response"
-        sdtmRows={responseRs.map((r) => ({
-          record_id: r.record,
-          RSTESTCD: r.test,
-          RSORRES: r.raw,
-          RSSTRESC: r.std,
-          source_ecrf_form: r.source_ecrf_form,
-          source_field: r.source_field,
-        }))}
-        lineageKeys={["source_ecrf_form", "source_field"]}
-      />
-    </section>
-  );
-}
-
-function ConversionPair({
-  heading,
-  note,
-  ecrfLabel,
-  ecrfFields,
-  sdtmLabel,
-  sdtmRows,
-  lineageKeys,
-}: {
-  heading: string;
-  note: string;
-  ecrfLabel: string;
-  ecrfFields: [string, string][];
-  sdtmLabel: string;
-  sdtmRows: Record<string, string>[];
-  lineageKeys: string[];
-}) {
-  return (
-    <div className="panel p-5">
-      <div className="text-sm font-medium mb-1">{heading}</div>
-      <div className="text-2xs text-slate-600 mb-4 max-w-2xl leading-snug">
-        {note}
-      </div>
-
-      <div className="grid grid-cols-[1fr_auto_2fr] gap-4 items-start">
-        <div>
-          <div className="text-2xs uppercase tracking-wider text-slate-500 font-medium mb-2">
-            {ecrfLabel}
-          </div>
-          <dl className="border border-slate-200 rounded bg-white">
-            {ecrfFields.map(([k, v], i) => (
-              <div
-                key={k}
-                className={`flex justify-between items-baseline px-3 py-2 ${
-                  i > 0 ? "border-t border-slate-100" : ""
-                }`}
-              >
-                <dt className="text-2xs text-slate-500">{k}</dt>
-                <dd className="mono text-2xs text-slate-900">{v}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-
-        <div className="flex flex-col items-center justify-center self-stretch text-slate-400">
-          <svg viewBox="0 0 40 12" className="w-10 h-3">
-            <path
-              d="M0 6 H32 M28 2 L34 6 L28 10"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-          </svg>
-          <div className="text-2xs mono mt-1 text-slate-500">map</div>
-        </div>
-
-        <div>
-          <div className="text-2xs uppercase tracking-wider text-slate-500 font-medium mb-2">
-            {sdtmLabel}
-          </div>
-          <div className="border border-slate-200 rounded bg-white overflow-x-auto">
-            <table className="w-full mono text-2xs">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  {Object.keys(sdtmRows[0] || {}).map((c) => (
-                    <th
-                      key={c}
-                      className={`text-left px-2 py-1.5 font-medium ${
-                        lineageKeys.includes(c)
-                          ? "text-accent-700 bg-accent-50"
-                          : "text-slate-600"
-                      }`}
-                    >
-                      {c}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sdtmRows.map((r, i) => (
-                  <tr
-                    key={i}
-                    className="border-b border-slate-100 last:border-b-0"
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} className="border-b border-stone-100 last:border-b-0">
+                {Object.entries(r).map(([k, v]) => (
+                  <td
+                    key={k}
+                    className={`px-3 py-2 mono text-2xs ${
+                      k === highlight
+                        ? "bg-accent-50 text-accent-800 font-medium"
+                        : "text-slate-700"
+                    }`}
                   >
-                    {Object.entries(r).map(([k, v]) => (
-                      <td
-                        key={k}
-                        className={`px-2 py-1.5 whitespace-nowrap ${
-                          lineageKeys.includes(k)
-                            ? "bg-accent-50 text-accent-800"
-                            : "text-slate-700"
-                        }`}
-                      >
-                        {v}
-                      </td>
-                    ))}
-                  </tr>
+                    {String(v)}
+                  </td>
                 ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="text-2xs text-accent-700 mt-2 leading-snug max-w-md">
-            <span className="font-medium">Lineage:</span> every SDTM row carries
-            the eCRF form and field it came from. Findings later use these to
-            address the coordinator at the right form, in the right language.
-          </div>
-        </div>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 }
 
-// --- Panel 3: Consistency check -------------------------------------------
+// --- Step 2 — mapping -----------------------------------------------------
 
-function PanelCheck({
-  data,
-  onDrill,
-}: {
-  data: PipelineData;
-  onDrill: (f: Finding) => void;
-}) {
-  const visible = useMemo(() => {
-    return data.findings.filter(
-      (f) =>
-        f.subject_id === SUBJECT &&
-        (f.visit === VISIT || (f.visit === "Baseline" && f.rule_id === "TR-002")),
+function Step2({ finding, csv }: { finding: Finding; csv: CsvData }) {
+  const sdtm = sdtmRowsForFinding(finding, csv);
+  if (sdtm.rows.length === 0)
+    return (
+      <div className="text-2xs text-slate-500 italic">
+        No SDTM rows pinned for this finding.
+      </div>
     );
-  }, [data.findings]);
-  const total = data.findings.length;
-  const otherCount = total - visible.length;
 
   return (
-    <section>
-      <PanelHeader
-        step={3}
-        title="Consistency check"
-        hint="Rules run against the SDTM data. Each finding carries severity, lineage, evidence rows, and an LLM-translated message."
-      />
-      <div className="space-y-2">
-        {visible.map((f) => (
-          <button
-            key={`${f.rule_id}|${f.subject_id}|${f.visit}|${f.lineage.field}`}
-            onClick={() => onDrill(f)}
-            className="w-full panel p-3 text-left hover:border-accent-300 transition flex items-start gap-3"
-          >
-            <SeverityChip severity={f.severity} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 text-2xs">
-                <span className="mono text-slate-500">{f.rule_id}</span>
-                <span className="mono text-slate-500">
-                  · {f.subject_id} {f.visit ? `· ${f.visit}` : ""}
-                </span>
-                <span className="ml-auto mono text-slate-400">
-                  {f.translator_source === "llm" ? "ai" : "fallback"}
-                </span>
-              </div>
-              <div className="text-sm text-slate-800 mt-1 leading-snug">
-                {f.user_message}
-              </div>
-            </div>
-            <div className="text-2xs text-accent-700 mono mt-0.5 shrink-0">
-              open →
-            </div>
-          </button>
-        ))}
+    <div className="panel p-4">
+      <div className="text-2xs text-slate-600 mb-3 max-w-2xl leading-snug">
+        Lineage columns <span className="mono">source_ecrf_form</span> and{" "}
+        <span className="mono">source_field</span> point back at exactly the
+        form and field the coordinator touched. This is what lets Stage 5
+        speak in eCRF terms even though the rule runs against SDTM.
       </div>
-      <div className="text-2xs text-slate-500 mt-3">
-        {otherCount} other findings exist across the rest of the study; this
-        panel shows only the ones touching SUBJ001 Week 16.
+      <div className="border border-stone-200 rounded overflow-x-auto">
+        <table className="w-full text-2xs">
+          <thead>
+            <tr className="bg-stone-50 border-b border-stone-200">
+              {sdtm.cols.map((c) => (
+                <th
+                  key={c}
+                  className={`text-left px-3 py-1.5 mono font-medium ${
+                    LINEAGE_COLS.has(c)
+                      ? "text-accent-700 bg-accent-50/70"
+                      : "text-slate-600"
+                  }`}
+                >
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sdtm.rows.map((r, i) => (
+              <tr key={i} className="border-b border-stone-100 last:border-b-0">
+                {sdtm.cols.map((c) => (
+                  <td
+                    key={c}
+                    className={`px-3 py-1.5 mono whitespace-nowrap ${
+                      LINEAGE_COLS.has(c)
+                        ? "bg-accent-50/70 text-accent-800"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    {String(r[c] ?? "")}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-    </section>
+    </div>
   );
 }
 
-// --- Drilldown drawer (right panel) ---------------------------------------
+// --- Step 3 — rule fired (terminal block) ---------------------------------
 
-function DrilldownDrawer({
-  finding,
-  onClose,
-}: {
-  finding: Finding;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
+function Step3({ finding }: { finding: Finding }) {
   return (
-    <aside
-      role="dialog"
-      aria-modal="true"
-      className="fixed top-11 right-0 bottom-0 w-[560px] border-l border-slate-200 bg-white shadow-xl z-40 flex flex-col"
-    >
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-200">
-        <SeverityChip severity={finding.severity} />
-        <span className="mono text-2xs text-slate-500">{finding.rule_id}</span>
-        <span className="mono text-2xs text-slate-500">
-          · {finding.subject_id} {finding.visit ? `· ${finding.visit}` : ""}
-        </span>
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="ml-auto text-slate-400 hover:text-slate-900 w-6 h-6 inline-flex items-center justify-center rounded hover:bg-slate-100"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        <div className="text-sm text-slate-800 leading-snug">
-          {finding.user_message}
+    <div>
+      <div className="terminal">
+        <div>
+          <span className="prompt">$</span> klin check --rule{" "}
+          <span className="key">{finding.rule_id}</span>
+          {" "}--subject <span className="key">{finding.subject_id}</span>
+          {finding.visit && (
+            <>
+              {" "}--visit <span className="key">"{finding.visit}"</span>
+            </>
+          )}
         </div>
-        {finding.suggested_actions.length > 0 && (
-          <div>
-            <div className="kicker mb-1.5">Suggested actions</div>
-            <ul className="text-sm text-slate-700 space-y-1 list-disc list-inside">
-              {finding.suggested_actions.map((a, i) => (
-                <li key={i}>{a}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {finding.template_id === "RESPONSE_THRESHOLD" && (
-          <ChartTemplate finding={finding} />
-        )}
-        <div className="text-2xs text-slate-500 border-t border-slate-200 pt-3">
-          <span className="kicker">Lineage</span>{" "}
-          <span className="mono text-slate-700">{finding.lineage.form}</span> ·{" "}
-          <span className="mono text-slate-700">{finding.lineage.field}</span> ·{" "}
-          <span className="mono text-slate-500">
-            {finding.lineage.source_doc}
-          </span>
+        <div className="muted">loading engine…  ✓  loading data…  ✓</div>
+        <div>
+          <span className="key">rule</span>{" "}
+          <span>{finding.rule_id}</span>{" "}
+          <span className="muted">{ruleBlurb(finding.rule_id)}</span>
         </div>
-        {finding.citation && (
-          <div className="text-2xs italic text-slate-500">
-            {finding.citation}
+        <div>
+          <span className="key">severity</span>{" "}
+          {finding.severity === "Critical" ? (
+            <span className="bad">CRITICAL</span>
+          ) : finding.severity === "Warning" ? (
+            <span style={{ color: "#fbbf24" }}>WARNING</span>
+          ) : (
+            <span style={{ color: "#7dd3fc" }}>SUGGESTED CHANGE</span>
+          )}
+        </div>
+        <div>
+          <span className="key">evidence</span>
+        </div>
+        {evidenceLines(finding).map((l, i) => (
+          <div key={i} className="pl-4">
+            <span className="muted">·</span> {l[0]}{" "}
+            <span className="muted">
+              {".".repeat(Math.max(0, 26 - l[0].length))}
+            </span>{" "}
+            <span>{l[1]}</span>
           </div>
-        )}
+        ))}
+        <div className="pt-1 border-t border-stone-700 mt-1">
+          <span className="key">result</span>{" "}
+          {finding.severity === "Critical" ? (
+            <span className="bad">CRITICAL ✗</span>
+          ) : (
+            <span style={{ color: "#fbbf24" }}>FLAGGED ⚑</span>
+          )}{" "}
+          <span className="muted">— {finding.raw_message}</span>
+        </div>
       </div>
-    </aside>
+      <p className="text-2xs text-slate-500 mt-2.5 leading-snug max-w-2xl">
+        {finding.citation}
+      </p>
+    </div>
   );
+}
+
+function evidenceLines(f: Finding): [string, string][] {
+  const p = f.template_params as Record<string, unknown>;
+  const lines: [string, string][] = [];
+  if (f.template_id === "RESPONSE_THRESHOLD") {
+    if (p.baseline_sum !== undefined)
+      lines.push([
+        "baseline_sum",
+        `${formatNum(p.baseline_sum)} mm`,
+      ]);
+    if (p.current_sum !== undefined)
+      lines.push(["current_sum", `${formatNum(p.current_sum)} mm`]);
+    if (p.pct_decrease !== undefined)
+      lines.push([
+        "pct_decrease",
+        `${((p.pct_decrease as number) * 100).toFixed(1)}%`,
+      ]);
+    if (p.pct_increase !== undefined)
+      lines.push([
+        "pct_increase",
+        `${((p.pct_increase as number) * 100).toFixed(1)}%`,
+      ]);
+    if (p.threshold !== undefined)
+      lines.push([
+        "threshold",
+        `${((p.threshold as number) * 100).toFixed(1)}%`,
+      ]);
+    return lines;
+  }
+  if (f.template_id === "GHOST_REFERENCE") {
+    return [
+      ["ghost_id", String(p.ghost_id)],
+      ["tu_ids", (p.tu_ids as string[]).join(", ")],
+      ["tr_ids_at_visit", (p.tr_ids_at_visit as string[]).join(", ")],
+    ];
+  }
+  if (f.template_id === "STANDARDIZATION") {
+    return [
+      ["raw_value", String(p.raw_value)],
+      ["canonical", String(p.canonical)],
+      ["field", String(p.field)],
+    ];
+  }
+  if (f.template_id === "DUPLICATE_IDENTITY") {
+    return [
+      ["lesion_id", String(p.lesion_id)],
+      [
+        "conflicting_locations",
+        (p.conflicting_locations as string[]).join(" / "),
+      ],
+      ["row_count", String(p.row_count)],
+    ];
+  }
+  if (f.template_id === "METHOD_CHANGE") {
+    return [
+      ["baseline_method", String(p.baseline_method)],
+      ["current_method", String(p.current_method)],
+    ];
+  }
+  if (f.template_id === "LARGE_DROP") {
+    const changes = p.changes as { lesion_id: string; prior_value: number; current_value: number; pct_drop: number }[];
+    return changes.map((c) => [
+      c.lesion_id,
+      `${c.prior_value} → ${c.current_value} mm  (${(c.pct_drop * 100).toFixed(0)}% drop)`,
+    ]);
+  }
+  if (f.template_id === "VISIT_WINDOW") {
+    return [
+      ["actual_date", String(p.actual_date)],
+      ["expected_date", String(p.expected_date)],
+      ["delta_days", `${p.delta_days} days`],
+      ["window_days", `±${p.window_days}`],
+    ];
+  }
+  if (f.template_id === "NEW_LESION_CONFLICT") {
+    return [
+      ["new_lesion_ids", (p.new_lesion_ids as string[]).join(", ")],
+      ["rs_newlresp", String(p.rs_newlresp)],
+      ["rs_ovrlresp", String(p.rs_ovrlresp)],
+    ];
+  }
+  if (f.template_id === "CR_NON_TARGET") {
+    return [
+      ["ntrgresp", String(p.ntrgresp)],
+      [
+        "non_target_present_ids",
+        (p.non_target_present_ids as string[]).join(", "),
+      ],
+    ];
+  }
+  return Object.entries(p).slice(0, 5).map(([k, v]) => [k, String(v)]);
+}
+
+function formatNum(n: unknown): string {
+  if (typeof n !== "number") return String(n);
+  return n.toFixed(1);
+}
+
+// --- Step 4 — translated ---------------------------------------------------
+
+function Step4({ finding }: { finding: Finding }) {
+  return (
+    <div className="panel border-accent-200 bg-accent-50/40 p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <SeverityChip severity={finding.severity} />
+        <span className="mono text-2xs text-slate-500">
+          {finding.rule_id}
+        </span>
+        <span className="ml-auto mono text-2xs text-accent-700 bg-white border border-accent-200 px-1.5 py-0.5 rounded">
+          {finding.translator_source === "llm" ? "ai-rendered" : "templater"}
+        </span>
+      </div>
+      <div className="text-sm text-slate-800 leading-snug">
+        {finding.user_message}
+      </div>
+      {finding.suggested_actions.length > 0 && (
+        <ul className="text-sm text-slate-700 mt-3 list-disc list-inside space-y-1">
+          {finding.suggested_actions.map((a, i) => (
+            <li key={i}>{a}</li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-4 flex items-center gap-3">
+        <Link to="/magic" className="btn btn-primary">
+          Open in coordinator view
+        </Link>
+        <span className="text-2xs text-slate-500">
+          Same message lands as an inline callout on the eCRF.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// data shaping
+
+const LINEAGE_COLS = new Set([
+  "source_ecrf_form",
+  "source_field",
+  "source_document_id",
+]);
+
+const TU_COLS = [
+  "TULNKID",
+  "TUORRES",
+  "TULOC",
+  "TUMETHOD",
+  "VISIT",
+  "source_ecrf_form",
+  "source_field",
+];
+const TR_COLS = [
+  "TRLNKID",
+  "TRTESTCD",
+  "TRORRES",
+  "TRSTRESC",
+  "TRSTRESU",
+  "TRMETHOD",
+  "VISIT",
+  "source_ecrf_form",
+  "source_field",
+];
+const RS_COLS = [
+  "RSTESTCD",
+  "RSORRES",
+  "RSSTRESC",
+  "VISIT",
+  "source_ecrf_form",
+  "source_field",
+];
+
+function findingKey(f: Finding): string {
+  return `${f.rule_id}|${f.subject_id}|${f.visit ?? ""}|${f.lineage.field}`;
+}
+
+function keyAt(arr: Finding[], i: number): string | null {
+  return arr[i] ? findingKey(arr[i]) : null;
+}
+
+function fieldLabel(k: string): string {
+  return k
+    .replace(/_raw$/, "")
+    .replace(/_/g, " ")
+    .replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+}
+
+function ecrfHighlightField(f: Finding): string {
+  if (f.rule_id === "TR-RS-001") return "target_lesion_response_raw";
+  if (f.rule_id === "TR-RS-003") return "overall_response_raw";
+  if (f.rule_id === "TU/TR-RS-002") return "new_lesion_response_raw";
+  if (f.rule_id === "TR-003") return "assessment_method_raw";
+  if (f.rule_id === "TR-002") return f.lineage.field;
+  if (f.rule_id === "LARGE_DROP") return "measurement_value";
+  if (f.rule_id === "VISIT_WINDOW") return "assessment_date";
+  if (f.rule_id === "TU-TR-001") return "lesion_number";
+  if (f.rule_id === "TU-002") return "lesion_site_raw";
+  return f.lineage.field;
+}
+
+function ecrfRowsForFinding(
+  f: Finding,
+  csv: CsvData,
+): Record<string, string>[] {
+  const subj = f.subject_id;
+  const visit = f.visit || "";
+  if (f.lineage.form.startsWith("Disease")) {
+    const row = csv.ecrfDisease.find(
+      (r) => r.subject_id === subj && r.visit === visit,
+    );
+    return row ? [slimEcrf(row)] : [];
+  }
+  if (f.lineage.form.startsWith("Baseline")) {
+    return csv.ecrfBaseline
+      .filter((r) => r.subject_id === subj)
+      .map(slimEcrf);
+  }
+  // Follow-up
+  return csv.ecrfFollowup
+    .filter((r) => r.subject_id === subj && r.visit === visit)
+    .map(slimEcrf);
+}
+
+function slimEcrf(r: Record<string, string>): Record<string, string> {
+  const drop = new Set([
+    "demo_issue_tag",
+    "source_document_id",
+    "response_derived_by_system",
+    "accepted_response_flag",
+    "assessor_role",
+    "response_criteria",
+  ]);
+  const out: Record<string, string> = {};
+  for (const k of Object.keys(r)) if (!drop.has(k)) out[k] = r[k];
+  return out;
+}
+
+function sdtmRowsForFinding(
+  f: Finding,
+  csv: CsvData,
+): { cols: string[]; rows: Record<string, string>[] } {
+  const subj = f.subject_id;
+  const visit = f.visit || "";
+  if (f.lineage.form.startsWith("Disease")) {
+    const rows = csv.rs
+      .filter((r) => r.USUBJID === subj && r.VISIT === visit)
+      .map((r) => pick(r, RS_COLS));
+    return { cols: RS_COLS, rows };
+  }
+  if (f.lineage.form.startsWith("Baseline")) {
+    const rows = csv.tu
+      .filter((r) => r.USUBJID === subj)
+      .map((r) => pick(r, TU_COLS));
+    return { cols: TU_COLS, rows };
+  }
+  // Follow-up assessments → TR rows for that visit.
+  const rows = csv.tr
+    .filter((r) => r.USUBJID === subj && r.VISIT === visit)
+    .map((r) => pick(r, TR_COLS));
+  return { cols: TR_COLS, rows };
+}
+
+function pick(
+  r: Record<string, string>,
+  cols: string[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const c of cols) out[c] = r[c] ?? "";
+  return out;
+}
+
+function ruleBlurb(id: string): string {
+  return {
+    "TR-RS-001": "PR must be supported by ≥30% target sum decrease",
+    "TR-RS-003": "Overall CR must not conflict with persistent non-target",
+    "TU/TR-RS-002": "New lesion presence must agree with response",
+    "TU-002": "Same lesion ID must denote one identity",
+    "TU-TR-001": "Every TR.TRLNKID must exist in TU.TULNKID",
+    "TR-003": "Imaging method should stay consistent across visits",
+    "TR-002": "Raw eCRF terms standardize to controlled terminology",
+    "LARGE_DROP": "Large single-interval drops should be verified",
+    "VISIT_WINDOW": "Assessment date must fall within the visit window",
+  }[id] ?? "";
 }

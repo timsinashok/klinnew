@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import data, run, translate
+from api.routes import data, run, stats, translate
 
 app = FastAPI(title="Klin Oncology Consistency Engine")
 
@@ -18,6 +18,7 @@ app.add_middleware(
 app.include_router(run.router, prefix="/api")
 app.include_router(data.router, prefix="/api")
 app.include_router(translate.router, prefix="/api")
+app.include_router(stats.router, prefix="/api")
 
 
 @app.get("/api/health")

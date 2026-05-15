@@ -4,7 +4,7 @@ import { UtilityBar } from "./UtilityBar";
 
 export function AppShell() {
   return (
-    <div className="h-screen flex flex-col bg-slate-50">
+    <div className="h-screen flex flex-col bg-[#fafaf8]">
       <UtilityBar llmOn={true} />
       <div className="flex-1 flex min-h-0">
         <Nav />

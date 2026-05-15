@@ -30,3 +30,30 @@ export interface RunResponse {
   enable_llm: boolean;
   model: string;
 }
+
+export interface StudyMeta {
+  study_id: string;
+  title: string;
+  sponsor: string;
+  site: string;
+  criteria: string;
+  enrolment_opened: string;
+  enrolment_closed: string | null;
+}
+
+export interface SubjectStat {
+  subject_id: string;
+  visits_completed: string[];
+  visits_planned: string[];
+  latest_visit: string | null;
+  last_visit_date: string | null;
+  status: "Active" | "Off-study";
+}
+
+export interface Stats {
+  study: StudyMeta;
+  subjects: SubjectStat[];
+  total_subjects: number;
+  total_visits_completed: number;
+  total_visits_planned: number;
+}

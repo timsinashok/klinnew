@@ -71,3 +71,87 @@ def _lineage(d: dict):
         field=d.get("field", ""),
         source_doc=d.get("source_doc", ""),
     )
+
+
+_STUDY = {
+    "study_id": "KLIN-ONC-DEMO-001",
+    "title": "Phase II Solid Tumour",
+    "sponsor": "Klin AI · Synthetic Sponsor",
+    "site": "042 · Memorial Cancer Center",
+    "criteria": "RECIST 1.1",
+    "enrolment_opened": "2026-01-03",
+    "enrolment_closed": None,
+}
+
+_PLANNED_VISITS = [
+    "Baseline",
+    "Week 8",
+    "Week 16",
+    "Week 24",
+    "Week 32",
+    "Week 40",
+    "Week 48",
+]
+
+
+def compute_stats() -> dict:
+    """Per-subject visit progress + study-level totals.
+
+    Reads the eCRF Tumor-Assessment forms (the system of record for which
+    visits actually happened) and groups by subject. Cached implicitly by
+    Python pandas at call time; cheap enough to compute fresh.
+    """
+    data = load_data(DATA_DIR)
+    eb = data["ecrf_baseline"]
+    ef = data["ecrf_followup"]
+
+    subjects: dict[str, dict] = {}
+    for _, row in eb.iterrows():
+        sid = row["subject_id"]
+        subjects.setdefault(sid, {"visits": set(), "last_date": None})
+        subjects[sid]["visits"].add(row["visit"])
+        d = str(row.get("assessment_date") or "")
+        if d:
+            subjects[sid]["last_date"] = max(
+                subjects[sid]["last_date"] or "", d
+            )
+    for _, row in ef.iterrows():
+        sid = row["subject_id"]
+        subjects.setdefault(sid, {"visits": set(), "last_date": None})
+        subjects[sid]["visits"].add(row["visit"])
+        d = str(row.get("assessment_date") or "")
+        if d:
+            subjects[sid]["last_date"] = max(
+                subjects[sid]["last_date"] or "", d
+            )
+
+    out_subjects = []
+    total_visits = 0
+    for sid in sorted(subjects):
+        s = subjects[sid]
+        visits_done = sorted(
+            [v for v in s["visits"] if v in _PLANNED_VISITS],
+            key=lambda v: _PLANNED_VISITS.index(v),
+        )
+        latest = visits_done[-1] if visits_done else None
+        total_visits += len(visits_done)
+        out_subjects.append(
+            {
+                "subject_id": sid,
+                "visits_completed": visits_done,
+                "visits_planned": _PLANNED_VISITS,
+                "latest_visit": latest,
+                "last_visit_date": s["last_date"],
+                "status": "Off-study"
+                if latest == "Week 48"
+                else "Active",
+            }
+        )
+
+    return {
+        "study": _STUDY,
+        "subjects": out_subjects,
+        "total_subjects": len(out_subjects),
+        "total_visits_completed": total_visits,
+        "total_visits_planned": len(out_subjects) * len(_PLANNED_VISITS),
+    }
