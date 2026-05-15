@@ -3,6 +3,11 @@ import { Link, useSearchParams } from "react-router-dom";
 import { fetchCsv, parseCsv, runEngine } from "../api";
 import { ChartTemplate } from "../components/ChartTemplate";
 import { SeverityChip } from "../components/SeverityBadge";
+import {
+  clearSubmissions,
+  loadSubmissions,
+  saveSubmissions,
+} from "../lib/persistence";
 import type { Finding } from "../types";
 import { SEV_RANK } from "../ui/tokens";
 
@@ -79,6 +84,8 @@ export function MagicDemo() {
   );
   const [chartFinding, setChartFinding] = useState<Finding | null>(null);
   const [allFindingsOpen, setAllFindingsOpen] = useState(false);
+  const [submitted, setSubmitted] = useState<Set<string>>(new Set());
+  const [justSubmitted, setJustSubmitted] = useState<string | null>(null);
   const lastSubjectVisit = useRef<string>("");
 
   // Load data once.
@@ -174,54 +181,41 @@ export function MagicDemo() {
     load();
   }, [load]);
 
-  // Auto-run the consistency check on mount so the page is never empty.
+  // Load submission state for this subject from localStorage.
   useEffect(() => {
-    if (allFindings !== null) return;
-    runEngine(true)
-      .then((r) => {
-        setAllFindings(r.findings);
-      })
-      .catch((e) => setErr(String(e)));
-  }, [allFindings]);
+    setSubmitted(new Set(loadSubmissions(subject)));
+    setJustSubmitted(null);
+  }, [subject]);
 
-  // Determine visits this subject has actually recorded data for.
-  const completedVisits = useMemo<Visit[]>(() => {
-    const set = new Set<string>();
-    for (const l of lesions) {
-      for (const v of Object.keys(l.measurements)) set.add(v);
-      for (const v of Object.keys(l.status)) set.add(v);
-    }
-    for (const v of Object.keys(responses)) set.add(v);
-    return VISITS.filter((v) => set.has(v));
-  }, [lesions, responses]);
-
-  // Findings for this subject — needed to pick a sensible default visit.
+  // Findings for this subject — used elsewhere for trajectory dots and the
+  // workspace dashboard.
   const subjectFindings = useMemo(
     () =>
       (allFindings ?? []).filter((f) => f.subject_id === subject),
     [allFindings, subject],
   );
 
-  // Resolve the active visit. Precedence:
-  //   1) the explicit URL param if it names a completed visit
-  //   2) the visit holding the subject's highest-severity finding
-  //   3) the latest completed visit
+  // The first visit the coordinator hasn't submitted yet. That's where we
+  // pick up from after a reload or subject switch.
+  const nextVisit: Visit | null = useMemo(() => {
+    for (const v of VISITS) if (!submitted.has(v)) return v as Visit;
+    return null;
+  }, [submitted]);
+
+  // Resolve the active visit. The URL param wins only if it's a visit the
+  // user is allowed to be on: either already submitted (read-only) or the
+  // next one in line. Otherwise we drop the user at nextVisit.
   const visit: Visit = useMemo(() => {
-    if (
-      visitParam &&
-      (VISITS as readonly string[]).includes(visitParam) &&
-      completedVisits.includes(visitParam as Visit)
-    )
-      return visitParam as Visit;
-    if (subjectFindings.length > 0) {
-      const sorted = [...subjectFindings].sort(
-        (a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity],
-      );
-      const v = (sorted[0].visit || "") as Visit;
-      if (completedVisits.includes(v)) return v;
+    if (visitParam && (VISITS as readonly string[]).includes(visitParam)) {
+      if (submitted.has(visitParam) || visitParam === nextVisit) {
+        return visitParam as Visit;
+      }
     }
-    return (completedVisits[completedVisits.length - 1] ?? "Week 16") as Visit;
-  }, [visitParam, completedVisits, subjectFindings]);
+    return (nextVisit ?? VISITS[VISITS.length - 1]) as Visit;
+  }, [visitParam, submitted, nextVisit]);
+
+  const visitSubmitted = submitted.has(visit);
+  const endOfStudy = nextVisit === null;
 
   // Reset dispositions when subject/visit changes.
   useEffect(() => {
@@ -301,19 +295,6 @@ export function MagicDemo() {
   const pctChange =
     baselineSum > 0 ? ((targetSum - baselineSum) / baselineSum) * 100 : 0;
 
-  const runCheck = async () => {
-    setRunning(true);
-    try {
-      const r = await runEngine(true);
-      setAllFindings(r.findings);
-      setErr(null);
-    } catch (e) {
-      setErr(String(e));
-    } finally {
-      setRunning(false);
-    }
-  };
-
   const updateMeasurement = (id: string, value: string) => {
     setLesions((rows) =>
       rows.map((r) =>
@@ -392,8 +373,51 @@ export function MagicDemo() {
   const acknowledge = (f: Finding) => disposeFinding(f, "acknowledged");
 
   const ran = allFindings !== null;
-  const submitBlocked = !ran || hasOpenCritical;
+  const submitBlocked = visitSubmitted || !ran || hasOpenCritical;
   const responseRow = responses[visit] || empty();
+
+  const runCheckForThisVisit = async () => {
+    setRunning(true);
+    try {
+      const r = await runEngine(true);
+      setAllFindings(r.findings);
+      setErr(null);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const submitVisit = () => {
+    const next = new Set(submitted);
+    next.add(visit);
+    setSubmitted(next);
+    saveSubmissions(subject, Array.from(next));
+    setJustSubmitted(visit);
+    setAllFindings(null);
+    setDispositions(new Map());
+    // Advance to the next visit in the trajectory.
+    const idx = VISITS.indexOf(visit);
+    for (let i = idx + 1; i < VISITS.length; i++) {
+      if (!next.has(VISITS[i])) {
+        setParams({ subject, visit: VISITS[i] });
+        return;
+      }
+    }
+    // No further visits — sit on the just-submitted visit; UI will render
+    // the end-of-study state via `endOfStudy`.
+    setParams({ subject, visit });
+  };
+
+  const resetSubject = () => {
+    clearSubmissions(subject);
+    setSubmitted(new Set());
+    setAllFindings(null);
+    setDispositions(new Map());
+    setJustSubmitted(null);
+    setParams({ subject });
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -402,7 +426,10 @@ export function MagicDemo() {
           subject={subject}
           visit={visit}
           visitDate={responseRow.date || lesions[0]?.measurements[visit] ? "" : ""}
-          completedVisits={completedVisits}
+          completedVisits={
+            Array.from(submitted) as Visit[]
+          }
+          activeVisit={visit}
           findingsByVisit={findingsByVisit}
           onSubject={(s) => setParams({ subject: s })}
           onVisit={(v) => setParams({ subject, visit: v })}
@@ -415,20 +442,34 @@ export function MagicDemo() {
             </div>
           )}
 
-          <RunBar
-            ran={ran}
-            running={running}
-            findingCount={openFindings.length}
-            onRun={runCheck}
-            otherVisits={otherVisitsWithFindings(
-              subjectFindings,
-              visit,
-              dispositions,
-            )}
-            onJumpToVisit={(v) =>
-              setParams({ subject, visit: v as string })
-            }
-          />
+          {justSubmitted && (
+            <div className="border-l-[3px] border-emerald-600 bg-emerald-50/70 px-5 py-3 flex items-start gap-3">
+              <span className="text-2xs font-semibold tracking-wider px-1.5 py-0.5 bg-emerald-600 text-white">
+                Submitted
+              </span>
+              <div className="text-sm text-slate-800">
+                <span className="mono">{justSubmitted}</span> submitted for{" "}
+                <span className="mono">{subject}</span>.{" "}
+                {endOfStudy
+                  ? "End of study reached."
+                  : `Now entering ${visit}.`}
+              </div>
+            </div>
+          )}
+
+          {endOfStudy ? (
+            <EndOfStudy subject={subject} onReset={resetSubject} />
+          ) : visitSubmitted ? (
+            <ReadOnlyVisitBanner visit={visit} />
+          ) : (
+            <RunBar
+              ran={ran}
+              running={running}
+              findingCount={openFindings.length}
+              onRun={runCheckForThisVisit}
+              visit={visit}
+            />
+          )}
 
           {loading ? (
             <SkeletonTwo />
@@ -502,14 +543,18 @@ export function MagicDemo() {
 
       <SubmitFooter
         blocked={submitBlocked}
+        visit={visit}
+        visitSubmitted={visitSubmitted}
+        ran={ran}
+        endOfStudy={endOfStudy}
         openCriticalCount={openFindings.filter(
           (f) => f.severity === "Critical",
         ).length}
         openOtherCount={openFindings.filter(
           (f) => f.severity !== "Critical",
         ).length}
-        ran={ran}
-        onReset={() => window.location.reload()}
+        onSubmit={submitVisit}
+        onReset={resetSubject}
       />
 
       {chartFinding && (
@@ -543,6 +588,7 @@ function PatientHeader({
   subject,
   visit,
   completedVisits,
+  activeVisit,
   findingsByVisit,
   onSubject,
   onVisit,
@@ -551,6 +597,7 @@ function PatientHeader({
   visit: Visit;
   visitDate: string;
   completedVisits: Visit[];
+  activeVisit: Visit;
   findingsByVisit: Map<string, Finding["severity"]>;
   onSubject: (s: string) => void;
   onVisit: (v: Visit) => void;
@@ -579,11 +626,15 @@ function PatientHeader({
           <PickerSelect
             value={visit}
             onChange={(v) => onVisit(v as Visit)}
-            options={VISITS.filter((v) => completedVisits.includes(v as Visit))}
+            options={VISITS.filter(
+              (v) =>
+                completedVisits.includes(v as Visit) || v === activeVisit,
+            )}
           />
         </div>
         <Trajectory
           current={visit}
+          activeVisit={activeVisit}
           completed={completedVisits}
           findingsByVisit={findingsByVisit}
           onJump={(v) => onVisit(v)}
@@ -639,11 +690,13 @@ function PickerSelect({
 
 function Trajectory({
   current,
+  activeVisit,
   completed,
   findingsByVisit,
   onJump,
 }: {
   current: Visit;
+  activeVisit: Visit;
   completed: Visit[];
   findingsByVisit: Map<string, Finding["severity"]>;
   onJump: (v: Visit) => void;
@@ -660,10 +713,13 @@ function Trajectory({
       <div className="kicker mb-2">Visit history</div>
       <ol className="flex items-end gap-3">
         {VISITS.map((v) => {
-          const isCur = v === current;
-          const isDone = completed.includes(v as Visit) && !isCur;
-          const sev = findingsByVisit.get(v);
-          const clickable = isCur || isDone;
+          const isSubmitted = completed.includes(v as Visit);
+          const isActive = v === activeVisit;
+          const isViewing = v === current;
+          const sev = isViewing ? findingsByVisit.get(v) : undefined;
+          // Coordinator can jump back to a submitted visit (read-only) or
+          // to the active visit they are entering.
+          const clickable = isSubmitted || isActive;
           return (
             <li key={v} className="flex flex-col items-center">
               <button
@@ -671,27 +727,37 @@ function Trajectory({
                 onClick={() => clickable && onJump(v as Visit)}
                 className="flex flex-col items-center gap-1 disabled:cursor-default"
                 title={
-                  sev
-                    ? `${v} — open ${sev}`
-                    : v
+                  isSubmitted
+                    ? `${v} — submitted`
+                    : isActive
+                      ? `${v} — entering now`
+                      : `${v} — locked until prior visits submitted`
                 }
               >
                 <div
                   className={`w-2.5 h-2.5 rounded-full ${
-                    isCur
-                      ? "bg-accent-600 ring-2 ring-accent-200"
-                      : isDone
+                    isViewing
+                      ? isActive
+                        ? "bg-accent-600 ring-2 ring-accent-200"
+                        : "bg-slate-700 ring-2 ring-stone-300"
+                      : isSubmitted
                         ? "bg-slate-700"
-                        : "bg-stone-300"
+                        : isActive
+                          ? "bg-accent-600"
+                          : "bg-stone-300"
                   }`}
                 />
                 <span
                   className={`text-[10px] mono ${
-                    isCur
-                      ? "text-accent-700 font-semibold"
-                      : isDone
+                    isViewing
+                      ? isActive
+                        ? "text-accent-700 font-semibold"
+                        : "text-slate-900 font-semibold"
+                      : isSubmitted
                         ? "text-slate-700"
-                        : "text-slate-400"
+                        : isActive
+                          ? "text-accent-700"
+                          : "text-slate-400"
                   }`}
                 >
                   {v.replace("Week ", "W")}
@@ -717,17 +783,14 @@ function RunBar({
   running,
   findingCount,
   onRun,
-  otherVisits,
-  onJumpToVisit,
+  visit,
 }: {
   ran: boolean;
   running: boolean;
   findingCount: number;
   onRun: () => void;
-  otherVisits: { visit: string; severity: Finding["severity"] }[];
-  onJumpToVisit: (v: string) => void;
+  visit: Visit;
 }) {
-  const cleanHere = ran && findingCount === 0;
   return (
     <div
       className={`panel p-3 flex items-center gap-3 ${
@@ -740,33 +803,14 @@ function RunBar({
             ? findingCount > 0
               ? `Consistency check found ${findingCount} ${
                   findingCount === 1 ? "finding" : "findings"
-                } for this visit.`
-              : "Consistency check complete. No findings for this visit."
-            : "Ready to submit? Run a consistency check first."}
+                } for ${visit}.`
+              : `${visit} entry is clean. Ready to submit.`
+            : `Review the entries for ${visit}, then run the consistency check.`}
         </div>
-        {cleanHere && otherVisits.length > 0 ? (
-          <div className="text-2xs text-slate-500 mt-1">
-            Open findings on prior visits:&nbsp;
-            {otherVisits.map((v, i) => (
-              <span key={v.visit}>
-                {i > 0 && <span className="text-slate-300"> · </span>}
-                <button
-                  onClick={() => onJumpToVisit(v.visit)}
-                  className="mono text-accent-700 hover:text-accent-800 underline-offset-2 hover:underline"
-                >
-                  {v.visit}
-                </button>
-                <span className="text-slate-400 mono ml-1">
-                  ({v.severity[0]})
-                </span>
-              </span>
-            ))}
-          </div>
-        ) : (
-          <div className="text-2xs text-slate-500 mt-0.5">
-            Checks this visit's data against prior visits and RECIST 1.1 rules.
-          </div>
-        )}
+        <div className="text-2xs text-slate-500 mt-0.5">
+          Each visit is validated against its own entries plus everything
+          submitted before it.
+        </div>
       </div>
       <button className="btn btn-primary" onClick={onRun} disabled={running}>
         {running ? "Running…" : ran ? "Re-check" : "Run consistency check"}
@@ -775,28 +819,45 @@ function RunBar({
   );
 }
 
-function otherVisitsWithFindings(
-  subjectFindings: Finding[],
-  currentVisit: string,
-  dispositions: Map<string, Disposition>,
-): { visit: string; severity: Finding["severity"] }[] {
-  const map = new Map<string, Finding["severity"]>();
-  for (const f of subjectFindings) {
-    const v = f.visit || "";
-    if (v === currentVisit) continue;
-    if (dispositions.has(findingKey(f))) continue;
-    const prev = map.get(v);
-    if (
-      !prev ||
-      SEV_RANK[f.severity as keyof typeof SEV_RANK] >
-        SEV_RANK[prev as keyof typeof SEV_RANK]
-    )
-      map.set(v, f.severity);
-  }
-  return Array.from(map.entries()).map(([visit, severity]) => ({
-    visit,
-    severity,
-  }));
+function ReadOnlyVisitBanner({ visit }: { visit: Visit }) {
+  return (
+    <div className="panel p-3 flex items-center gap-3 bg-stone-50">
+      <span className="text-2xs font-semibold tracking-wider px-1.5 py-0.5 bg-stone-500 text-white">
+        Submitted
+      </span>
+      <div className="text-sm text-slate-700">
+        <span className="mono">{visit}</span> has already been submitted.
+        Switch to the active visit to enter new data, or use Reset to start
+        over.
+      </div>
+    </div>
+  );
+}
+
+function EndOfStudy({
+  subject,
+  onReset,
+}: {
+  subject: string;
+  onReset: () => void;
+}) {
+  return (
+    <div className="panel p-5 bg-emerald-50 border-emerald-200">
+      <div className="kicker mb-1">End of study</div>
+      <div className="text-base font-semibold text-slate-900 mb-1">
+        Every planned visit has been submitted for{" "}
+        <span className="mono">{subject}</span>.
+      </div>
+      <p className="text-sm text-slate-700 leading-snug max-w-2xl">
+        In production this hands off to the data manager for query
+        reconciliation. For demo purposes you can reset this subject and walk
+        through the workflow again, or switch subject from the picker above.
+      </p>
+      <button className="btn mt-3" onClick={onReset}>
+        Reset subject
+      </button>
+    </div>
+  );
 }
 
 function SkeletonTwo() {
@@ -1329,42 +1390,53 @@ function ruleHeadline(f: Finding): string {
 
 function SubmitFooter({
   blocked,
+  visit,
+  visitSubmitted,
+  ran,
+  endOfStudy,
   openCriticalCount,
   openOtherCount,
-  ran,
+  onSubmit,
   onReset,
 }: {
   blocked: boolean;
+  visit: Visit;
+  visitSubmitted: boolean;
+  ran: boolean;
+  endOfStudy: boolean;
   openCriticalCount: number;
   openOtherCount: number;
-  ran: boolean;
+  onSubmit: () => void;
   onReset: () => void;
 }) {
-  let msg: React.ReactNode = "This visit is ready to submit.";
-  if (!ran) msg = "Run a consistency check before submitting.";
+  let msg: React.ReactNode = `${visit} ready to submit.`;
+  if (endOfStudy) msg = "All visits submitted for this subject.";
+  else if (visitSubmitted) msg = `${visit} already submitted.`;
+  else if (!ran) msg = `Run a consistency check on ${visit} before submitting.`;
   else if (openCriticalCount > 0)
     msg = (
       <span className="text-sev-critical-700">
         {openCriticalCount} critical finding{openCriticalCount === 1 ? "" : "s"}
         {" "}
-        must be resolved or flagged before submission.
+        must be resolved or flagged before submitting {visit}.
       </span>
     );
   else if (openOtherCount > 0)
     msg = `${openOtherCount} non-critical finding${
       openOtherCount === 1 ? "" : "s"
-    } open. You can submit, or handle them first.`;
+    } open on ${visit}. You can submit, or handle them first.`;
   return (
     <footer className="border-t border-stone-200 bg-white px-6 py-3 flex items-center gap-3 shrink-0">
       <div className="text-2xs text-slate-500">{msg}</div>
       <button className="btn ml-auto" onClick={onReset}>
-        Reset
+        Reset subject
       </button>
       <button
         className={`btn ${blocked ? "" : "btn-primary"}`}
         disabled={blocked}
+        onClick={onSubmit}
       >
-        Submit visit
+        Submit {visit}
       </button>
     </footer>
   );

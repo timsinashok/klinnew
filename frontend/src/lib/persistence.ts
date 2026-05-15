@@ -56,3 +56,34 @@ export function clearSubject(subjectId: string): void {
 export function editKey(visit: string | null | undefined, field: string): string {
   return `${visit || ""}|${field}`;
 }
+
+// --- visit submission tracking --------------------------------------------
+
+const SUBMIT_KEY_PREFIX = "klin.v0.submitted.";
+
+export function loadSubmissions(subjectId: string): string[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(SUBMIT_KEY_PREFIX + subjectId);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveSubmissions(subjectId: string, visits: string[]): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(
+      SUBMIT_KEY_PREFIX + subjectId,
+      JSON.stringify(visits),
+    );
+  } catch {
+    /* quota / disabled */
+  }
+}
+
+export function clearSubmissions(subjectId: string): void {
+  if (typeof localStorage === "undefined") return;
+  localStorage.removeItem(SUBMIT_KEY_PREFIX + subjectId);
+}
