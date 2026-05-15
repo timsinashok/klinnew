@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { fetchCsv, parseCsv, runEngine } from "../api";
 import { ChartTemplate } from "../components/ChartTemplate";
 import { SeverityChip } from "../components/SeverityBadge";
-import type { Finding, Severity } from "../types";
+import type { Finding } from "../types";
 import { SEV_RANK } from "../ui/tokens";
 
 const VISITS = [
@@ -1203,5 +1203,3 @@ function SectionHead({
   );
 }
 
-declare const _SEV: Severity; // (keep tsc happy with unused import in some configs)
-void _SEV;
