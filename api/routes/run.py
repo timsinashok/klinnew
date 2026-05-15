@@ -1,20 +1,20 @@
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, Query
 
-from api.service import run_findings_from_demo, run_findings_from_uploads
+from api.service import run_engine
 
 router = APIRouter()
 
 
 @router.post("/run")
-async def run(
-    tu: UploadFile = File(...),
-    tr: UploadFile = File(...),
-    rs: UploadFile = File(...),
+@router.get("/run")
+def run(
+    enable_llm: bool = Query(default=True),
+    model: str = Query(default="claude-haiku-4-5"),
 ):
-    findings = await run_findings_from_uploads(tu, tr, rs)
-    return {"findings": findings}
-
-
-@router.get("/demo")
-async def demo():
-    return {"findings": run_findings_from_demo()}
+    findings = run_engine(enable_llm=enable_llm, model=model)
+    return {
+        "count": len(findings),
+        "findings": findings,
+        "enable_llm": enable_llm,
+        "model": model,
+    }

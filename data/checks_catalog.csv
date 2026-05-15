@@ -1,0 +1,10 @@
+check_id,layer,domain_scope,variables_or_fields,plain_english_rule,severity_when_failed
+TU-001,Basic,TU,TULNKID,Lesion ID must not be blank and should follow T01/NT01/NEW01 convention.,Critical
+TU-002,Within-domain,TU,TULNKID + TULOC + TUORRES,Same lesion ID should not represent two different lesion identities for the same subject.,Critical
+TU-TR-001,Cross-domain,TU↔TR,TULNKID / TRLNKID,Every tumor result lesion ID in TR must exist in TU.,Critical
+TR-001,Basic,TR,TRTESTCD/TRORRES/TRORRESU,Diameter results must be numeric and have a unit.,Critical
+TR-002,Standardization,TR,TRORRESU/TRSTRESU,Numeric measurements should be standardized to mm for comparison.,Suggested Change
+TR-003,Cross-visit,TR,TRMETHOD,Method changes across visits should be verified.,Warning
+TR-RS-001,Medical logic,TR↔RS,TRSTRESN + RSORRES,PR should be supported by sufficient target lesion decrease.,Critical
+TU/TR-RS-002,Medical logic,TU/TR↔RS,TUORRES/RSORRES,New lesion presence should agree with new lesion response and overall response.,Critical
+TR-RS-003,Medical logic,TR↔RS,TRORRES + RSORRES,Overall CR should not conflict with persistent non-target disease.,Critical

@@ -1,25 +1,32 @@
-export type Severity = "LOW" | "MEDIUM" | "HIGH";
+export type Severity = "Critical" | "Warning" | "Suggested Change";
+
+export interface Lineage {
+  form: string;
+  field: string;
+  source_doc: string;
+}
 
 export interface Finding {
   rule_id: string;
   severity: Severity;
-  usubjid: string;
+  subject_id: string;
   visit: string | null;
-  message: string;
+  domain: string;
+  variable: string;
+  lineage: Lineage;
+  evidence_rows: Record<string, Record<string, unknown>[]>;
+  raw_message: string;
   template_id: string;
   template_params: Record<string, unknown>;
-  evidence_rows: Record<string, Record<string, unknown>[]>;
   citation: string;
+  user_message: string;
+  suggested_actions: string[];
+  translator_source: "" | "llm" | "template";
 }
 
-export interface BenchmarkReport {
-  total_truth: number;
-  covered_count: number;
-  missing: string[];
-  total_findings: number;
-  matched_findings: number;
-  false_positives: { rule_id: string; usubjid: string; visit: string | null }[];
-  recall: number;
-  precision: number;
-  per_error: Record<string, string[]>;
+export interface RunResponse {
+  count: number;
+  findings: Finding[];
+  enable_llm: boolean;
+  model: string;
 }

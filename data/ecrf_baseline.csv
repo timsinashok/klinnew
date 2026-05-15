@@ -1,0 +1,17 @@
+subject_id,visit,assessment_date,assessment_method_raw,assessor_role,source_document_id,lesion_category,lesion_number,lesion_site_raw,lesion_laterality_raw,lesion_location_detail,lesion_description,measurement_value,measurement_unit_raw,lesion_status,previously_irradiated,demo_issue_tag
+SUBJ001,Baseline,2026-01-03,computed tomography,Investigator,RAD-SUBJ001-BL,TARGET,T01,LUNG,RIGHT,UPPER LOBE,Right upper lobe lung mass,35.0,mm,PRESENT,No,SUG_METHOD_STANDARDIZATION
+SUBJ001,Baseline,2026-01-03,CT scan,Investigator,RAD-SUBJ001-BL,TARGET,T02,LIVER,RIGHT,SEGMENT VIII,Liver segment VIII lesion,28.0,mm,PRESENT,No,
+SUBJ001,Baseline,2026-01-03,CT scan,Investigator,RAD-SUBJ001-BL,NON-TARGET,NT01,LUNG,BILATERAL,MULTIPLE,Multiple small pulmonary nodules,,,PRESENT,No,
+SUBJ002,Baseline,2026-01-05,CT scan,Investigator,RAD-SUBJ002-BL,TARGET,T01,LIVER,RIGHT,SEGMENT V,Right hepatic segment V lesion,42.0,mm,PRESENT,No,
+SUBJ002,Baseline,2026-01-05,CT scan,Investigator,RAD-SUBJ002-BL,TARGET,T02,LYMPH NODE,LEFT,AXILLARY,Left axillary lymph node short axis,18.0,mm,PRESENT,No,
+SUBJ002,Baseline,2026-01-05,CT scan,Investigator,RAD-SUBJ002-BL,NON-TARGET,NT01,PERITONEUM,,MULTIPLE,Peritoneal nodules,,,PRESENT,No,
+SUBJ003,Baseline,2026-01-06,CT scan,Investigator,RAD-SUBJ003-BL,TARGET,T01,LUNG,LEFT,LOWER LOBE,Left lower lobe lung lesion,30.0,mm,PRESENT,No,
+SUBJ003,Baseline,2026-01-06,CT scan,Investigator,RAD-SUBJ003-BL,TARGET,T02,ADRENAL GLAND,RIGHT,,Right adrenal lesion,25.0,mm,PRESENT,No,
+SUBJ003,Baseline,2026-01-06,CT scan,Investigator,RAD-SUBJ003-BL,NON-TARGET,NT01,BONE,,PELVIS,Sclerotic pelvic bone lesion,,,PRESENT,No,
+SUBJ004,Baseline,2026-01-08,CT scan,Investigator,RAD-SUBJ004-BL,TARGET,T01,LIVER,LEFT,SEGMENT II,Left liver segment II lesion,50.0,mm,PRESENT,No,
+SUBJ004,Baseline,2026-01-08,CT scan,Investigator,RAD-SUBJ004-BL,TARGET,T02,LYMPH NODE,RIGHT,HILAR,Right hilar lymph node short axis,20.0,mm,PRESENT,No,
+SUBJ004,Baseline,2026-01-08,CT scan,Investigator,RAD-SUBJ004-BL,NON-TARGET,NT01,PERITONEUM,,ASCITES,Malignant ascites,,,PRESENT,No,
+SUBJ005,Baseline,2026-01-10,CT scan,Investigator,RAD-SUBJ005-BL,TARGET,T01,LUNG,RIGHT,MIDDLE LOBE,Right middle lobe lung lesion,33.0,mm,PRESENT,No,
+SUBJ005,Baseline,2026-01-10,CT scan,Investigator,RAD-SUBJ005-BL,TARGET,T02,LIVER,LEFT,SEGMENT III,Left liver segment III lesion,40.0,mm,PRESENT,No,
+SUBJ005,Baseline,2026-01-10,CT scan,Investigator,RAD-SUBJ005-BL,NON-TARGET,NT01,PLEURA,RIGHT,EFFUSION,Right pleural effusion,,,PRESENT,No,
+SUBJ005,Baseline,2026-01-10,CT scan,Investigator,RAD-SUBJ005-BL,TARGET,T01,LIVER,RIGHT,SEGMENT VI,Duplicate Target 1 liver lesion entry,29.0,mm,PRESENT,No,TU_DUP_TULNKID_LOCATION

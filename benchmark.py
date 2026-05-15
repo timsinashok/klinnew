@@ -1,8 +1,8 @@
-"""CLI: compare engine findings to a ground-truth CSV.
+"""CLI: compare engine findings to data/expected_issues.csv.
 
-Maps each rule_id to the set of ERROR_IDs it is responsible for, then computes
-recall (truth entries covered by at least one finding) and precision (findings
-that match at least one truth entry).
+Maps each engine rule_id to the set of expected `issue_id`s it should catch.
+Recall = truth entries with ≥1 matched finding. Precision = findings that
+match at least one truth entry.
 """
 
 import argparse
@@ -12,58 +12,62 @@ from pathlib import Path
 
 import pandas as pd
 
-RULE_TO_ERRORS: dict[str, set[str]] = {
-    "NONTARGET_LDIAM": {"ERR-001"},
-    "PR_THRESHOLD": {"ERR-002", "ERR-003"},
-    "BOR_CONSISTENCY": {"ERR-004"},
-    "LN_MEASURABILITY": {"ERR-005"},
-    "CR_NONTARGET": {"ERR-006"},
-    "MAX_TARGETS": {"ERR-007"},
-    "MAX_PER_ORGAN": {"ERR-007"},
-    "NEWLPRES_VS_TU": {"ERR-008"},
-    "NEW_AT_BASELINE": {"ERR-009"},
-    "GHOST_TRLNKID": {"ERR-010"},
-    "PD_THRESHOLD": {"ERR-011"},
+RULE_TO_ISSUES: dict[str, set[str]] = {
+    "TU-001": set(),  # sanity rule, no seeded issue
+    "TR-001": set(),  # sanity rule, no seeded issue
+    "TU-002": {"CRIT-001"},
+    "TU-TR-001": {"CRIT-002"},
+    "TR-RS-001": {"CRIT-003"},
+    "TU/TR-RS-002": {"CRIT-004"},
+    "TR-RS-003": {"CRIT-005"},
+    "TR-003": {"WARN-001"},
+    "LARGE_DROP": {"WARN-002"},
+    "VISIT_WINDOW": {"WARN-003"},
+    "TR-002": {"SUG-001", "SUG-002", "SUG-003"},
 }
 
 
-def _match(finding: dict, truth_row: pd.Series) -> bool:
-    if finding["usubjid"] != truth_row["USUBJID"]:
+def _match(finding: dict, truth: pd.Series) -> bool:
+    if finding["subject_id"] != truth["subject_id"]:
         return False
-    if truth_row["ERROR_ID"] not in RULE_TO_ERRORS.get(finding["rule_id"], set()):
+    if (finding.get("visit") or "") != truth["visit"]:
         return False
-    fv = finding.get("visit")
-    if fv is None:
-        return True
-    return fv == truth_row["VISIT_AFFECTED"]
+    return truth["issue_id"] in RULE_TO_ISSUES.get(finding["rule_id"], set())
 
 
 def evaluate(findings: list[dict], truth: pd.DataFrame) -> dict:
     covered: dict[str, list[dict]] = {}
     for _, t in truth.iterrows():
-        covered[t["ERROR_ID"]] = [f for f in findings if _match(f, t)]
+        covered[t["issue_id"]] = [f for f in findings if _match(f, t)]
 
     matched_findings = [
         f for f in findings if any(_match(f, t) for _, t in truth.iterrows())
     ]
 
-    recall = sum(1 for v in covered.values() if v) / len(covered) if len(covered) else 0
-    precision = len(matched_findings) / len(findings) if findings else 0
+    n_truth = len(covered)
+    recall = sum(1 for v in covered.values() if v) / n_truth if n_truth else 0
+    precision = (
+        len(matched_findings) / len(findings) if findings else 0
+    )
 
     return {
-        "total_truth": len(covered),
+        "total_truth": n_truth,
         "covered_count": sum(1 for v in covered.values() if v),
         "missing": [e for e, v in covered.items() if not v],
         "total_findings": len(findings),
         "matched_findings": len(matched_findings),
         "false_positives": [
-            {"rule_id": f["rule_id"], "usubjid": f["usubjid"], "visit": f.get("visit")}
+            {
+                "rule_id": f["rule_id"],
+                "subject_id": f["subject_id"],
+                "visit": f.get("visit"),
+            }
             for f in findings
             if f not in matched_findings
         ],
         "recall": recall,
         "precision": precision,
-        "per_error": {e: [f["rule_id"] for f in v] for e, v in covered.items()},
+        "per_issue": {e: [f["rule_id"] for f in v] for e, v in covered.items()},
     }
 
 
@@ -76,24 +80,27 @@ def main(argv: list[str] | None = None) -> int:
     findings = json.loads(args.findings.read_text())
     truth = pd.read_csv(args.truth)
 
-    report = evaluate(findings, truth)
-
-    print(f"Recall:    {report['covered_count']}/{report['total_truth']} "
-          f"({report['recall'] * 100:.0f}%)")
-    print(f"Precision: {report['matched_findings']}/{report['total_findings']} "
-          f"({report['precision'] * 100:.0f}%)")
-    if report["missing"]:
-        print(f"Missing:   {', '.join(report['missing'])}")
-    if report["false_positives"]:
+    r = evaluate(findings, truth)
+    print(
+        f"Recall:    {r['covered_count']}/{r['total_truth']} "
+        f"({r['recall'] * 100:.0f}%)"
+    )
+    print(
+        f"Precision: {r['matched_findings']}/{r['total_findings']} "
+        f"({r['precision'] * 100:.0f}%)"
+    )
+    if r["missing"]:
+        print(f"Missing:   {', '.join(r['missing'])}")
+    if r["false_positives"]:
         print("False positives:")
-        for fp in report["false_positives"]:
-            print(f"  {fp['rule_id']:18s} {fp['usubjid']}  {fp['visit']}")
-    print("\nPer-error mapping:")
-    for err, rules in sorted(report["per_error"].items()):
-        rules_str = ", ".join(rules) if rules else "(missing)"
-        print(f"  {err}: {rules_str}")
+        for fp in r["false_positives"]:
+            print(f"  {fp['rule_id']:15s} {fp['subject_id']}  {fp['visit']}")
+    print("\nPer-issue mapping:")
+    for issue, rules_caught in sorted(r["per_issue"].items()):
+        s = ", ".join(rules_caught) if rules_caught else "(missing)"
+        print(f"  {issue}: {s}")
 
-    return 0 if (report["recall"] == 1.0 and not report["false_positives"]) else 1
+    return 0 if (r["recall"] == 1.0 and not r["false_positives"]) else 1
 
 
 if __name__ == "__main__":

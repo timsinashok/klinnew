@@ -1,99 +1,101 @@
 import pandas as pd
 
-from engine.finding import Finding
+from engine.finding import Finding, lineage_from_row, rows_to_records
 from engine.registry import rule
 
 PR_DECREASE_THRESHOLD = 0.30
-PD_INCREASE_PCT = 0.20
-PD_INCREASE_ABS = 5.0
-CITATION_PR = "RECIST 1.1 § 4.3.1 (PR: ≥30% decrease in sum of diameters from baseline)"
-CITATION_PD = (
-    "RECIST 1.1 § 4.3.1 (PD: ≥20% AND ≥5mm increase in sum from nadir, "
-    "OR unequivocal new lesion)"
+CITATION = (
+    "RECIST 1.1 § 4.3.1 (PR: ≥30% decrease in sum of target diameters from baseline)"
+)
+CITATION_CR_NT = (
+    "RECIST 1.1 § 4.3.3 (Overall CR requires all non-targets absent and NTRGRESP=CR)"
 )
 
 
-def _baseline_visitnum(df: pd.DataFrame, usubjid: str) -> float | None:
-    sub = df[df["USUBJID"] == usubjid]
-    if sub.empty:
-        return None
-    return float(sub["VISITNUM"].min())
+def _target_sum_by_visit(
+    tr: pd.DataFrame, tu: pd.DataFrame, usubjid: str
+) -> dict[str, float]:
+    """Sum of TARGET-lesion diameters per visit for one subject.
 
+    Lymph-node targets contribute their short axis if recorded; non-nodal
+    targets contribute their longest diameter. Both are stored as
+    TRTESTCD=DIAMETER in this dataset.
+    """
+    targets = set(
+        tu.loc[
+            (tu["USUBJID"] == usubjid) & (tu["TUORRES"] == "TARGET"), "TULNKID"
+        ].astype(str)
+    )
+    if not targets:
+        return {}
 
-def _subject_has_nodal_target(tr: pd.DataFrame, usubjid: str) -> bool:
-    sub = tr[(tr["USUBJID"] == usubjid) & (tr["TRTESTCD"] == "SAXIS")]
-    return not sub.empty
-
-
-def _sumdiam_by_visit(tr: pd.DataFrame, usubjid: str) -> dict[str, float]:
     sub = tr[
         (tr["USUBJID"] == usubjid)
-        & (tr["TRTESTCD"] == "SUMDIAM")
+        & (tr["TRTESTCD"] == "DIAMETER")
+        & (tr["TRLNKID"].astype(str).isin(targets))
     ]
-    out: dict[str, float] = {}
-    for _, row in sub.iterrows():
-        val = pd.to_numeric(row["TRSTRESC"], errors="coerce")
-        if pd.notna(val):
-            out[row["VISIT"]] = float(val)
-    return out
+    sums: dict[str, float] = {}
+    for visit, vrows in sub.groupby("VISIT"):
+        vals = pd.to_numeric(vrows["TRSTRESN"], errors="coerce").dropna()
+        if len(vals):
+            sums[visit] = float(vals.sum())
+    return sums
 
 
-def _evidence_rows(df: pd.DataFrame, mask: pd.Series) -> list[dict]:
-    return df.loc[mask].astype(object).where(df.loc[mask].notna(), None).to_dict(
-        orient="records"
-    )
-
-
-@rule("PR_THRESHOLD")
-def pr_threshold(
-    tu: pd.DataFrame, tr: pd.DataFrame, rs: pd.DataFrame
-) -> list[Finding]:
+@rule("TR-RS-001", severity="Critical", layer="Medical logic")
+def pr_threshold(data: dict[str, pd.DataFrame]) -> list[Finding]:
+    tu, tr, rs = data["tu"], data["tr"], data["rs"]
     findings: list[Finding] = []
-    pr_rows = rs[(rs["RSTESTCD"] == "TRGRESP") & (rs["RSORRES"] == "PR")]
+
+    pr_rows = rs[
+        (rs["RSTESTCD"] == "TRGRESP") & (rs["RSSTRESC"].str.upper() == "PR")
+    ]
 
     for _, pr in pr_rows.iterrows():
         usubjid = pr["USUBJID"]
         visit = pr["VISIT"]
 
-        if _subject_has_nodal_target(tr, usubjid):
+        sums = _target_sum_by_visit(tr, tu, usubjid)
+        if "Baseline" not in sums or visit not in sums:
             continue
 
-        sums = _sumdiam_by_visit(tr, usubjid)
-        baseline_v = tr[
-            (tr["USUBJID"] == usubjid) & (tr["TRTESTCD"] == "SUMDIAM")
-        ].sort_values("VISITNUM").iloc[0]["VISIT"] if usubjid in tr["USUBJID"].values else None
-
-        if baseline_v is None or baseline_v not in sums or visit not in sums:
-            continue
-
-        baseline = sums[baseline_v]
+        baseline = sums["Baseline"]
         current = sums[visit]
-        if baseline == 0:
+        if baseline <= 0:
             continue
         pct_decrease = (baseline - current) / baseline
         if pct_decrease >= PR_DECREASE_THRESHOLD:
             continue
 
-        tr_evidence_mask = (
+        tr_evidence = tr[
             (tr["USUBJID"] == usubjid)
-            & (tr["TRTESTCD"] == "SUMDIAM")
-        )
-        rs_evidence_mask = (
+            & (tr["TRTESTCD"] == "DIAMETER")
+            & (tr["VISIT"].isin(["Baseline", visit]))
+        ]
+        rs_evidence = rs[
             (rs["USUBJID"] == usubjid)
             & (rs["VISIT"] == visit)
             & (rs["RSTESTCD"].isin(["TRGRESP", "OVRLRESP"]))
-        )
+        ]
 
         findings.append(
             Finding(
-                rule_id="PR_THRESHOLD",
-                severity="HIGH",
-                usubjid=usubjid,
+                rule_id="TR-RS-001",
+                severity="Critical",
+                subject_id=usubjid,
                 visit=visit,
-                message=(
-                    f"PR claimed at {visit} but sum of diameters decreased only "
-                    f"{pct_decrease * 100:.1f}% from baseline "
-                    f"({baseline:g}mm → {current:g}mm). PR requires ≥30% decrease."
+                domain="RS",
+                variable="RSORRES",
+                lineage=lineage_from_row(pr),
+                evidence_rows={
+                    "TR": rows_to_records(tr_evidence),
+                    "RS": rows_to_records(rs_evidence),
+                },
+                raw_message=(
+                    f"Target response is PR at {visit} but the sum of target "
+                    f"diameters decreased from {baseline:g} mm at baseline to "
+                    f"{current:g} mm ({pct_decrease * 100:.1f}%). PR requires "
+                    f"≥30% decrease."
                 ),
                 template_id="RESPONSE_THRESHOLD",
                 template_params={
@@ -104,114 +106,87 @@ def pr_threshold(
                     "claimed_response": "PR",
                     "sums_by_visit": sums,
                     "flagged_visit": visit,
-                    "baseline_visit": baseline_v,
+                    "baseline_visit": "Baseline",
                 },
-                evidence_rows={
-                    "TR": _evidence_rows(tr, tr_evidence_mask),
-                    "RS": _evidence_rows(rs, rs_evidence_mask),
-                },
-                citation=CITATION_PR,
+                citation=CITATION,
             )
         )
 
     return findings
 
 
-def _new_lesion_in_tu_at_visit(tu: pd.DataFrame, usubjid: str, visit: str) -> bool:
-    sub = tu[
-        (tu["USUBJID"] == usubjid)
-        & (tu["TUSTRESC"] == "NEW")
-        & (tu["VISIT"] == visit)
-    ]
-    return not sub.empty
-
-
-@rule("PD_THRESHOLD")
-def pd_threshold(
-    tu: pd.DataFrame, tr: pd.DataFrame, rs: pd.DataFrame
-) -> list[Finding]:
+@rule("TR-RS-003", severity="Critical", layer="Medical logic")
+def cr_vs_non_target(data: dict[str, pd.DataFrame]) -> list[Finding]:
+    tu, tr, rs = data["tu"], data["tr"], data["rs"]
     findings: list[Finding] = []
-    pd_rows = rs[(rs["RSTESTCD"] == "TRGRESP") & (rs["RSORRES"] == "PD")]
 
-    for _, pd_row in pd_rows.iterrows():
-        usubjid = pd_row["USUBJID"]
-        visit = pd_row["VISIT"]
-        visitnum = pd_row["VISITNUM"]
+    cr_visits = rs[(rs["RSTESTCD"] == "OVRLRESP") & (rs["RSSTRESC"] == "CR")]
+    for _, cr in cr_visits.iterrows():
+        usubjid = cr["USUBJID"]
+        visit = cr["VISIT"]
 
-        sub_sums = tr[
-            (tr["USUBJID"] == usubjid) & (tr["TRTESTCD"] == "SUMDIAM")
-        ].sort_values("VISITNUM")
-        if sub_sums.empty:
-            continue
-
-        prior_and_current = sub_sums[sub_sums["VISITNUM"] <= visitnum]
-        if prior_and_current.empty:
-            continue
-
-        current_row = prior_and_current[prior_and_current["VISIT"] == visit]
-        if current_row.empty:
-            continue
-        current = float(current_row.iloc[0]["TRSTRESN"])
-
-        nadir_val = float(prior_and_current["TRSTRESN"].min())
-
-        if _new_lesion_in_tu_at_visit(tu, usubjid, visit):
-            continue
-
-        if nadir_val == 0:
-            continue
-        pct_increase = (current - nadir_val) / nadir_val
-        abs_increase = current - nadir_val
-        if pct_increase >= PD_INCREASE_PCT and abs_increase >= PD_INCREASE_ABS:
-            continue
-
-        sums_by_visit = {
-            r["VISIT"]: float(r["TRSTRESN"])
-            for _, r in sub_sums.iterrows()
-            if pd.notna(r["TRSTRESN"])
-        }
-        nadir_visit = prior_and_current.loc[
-            prior_and_current["TRSTRESN"].idxmin(), "VISIT"
+        nt = tr[
+            (tr["USUBJID"] == usubjid)
+            & (tr["VISIT"] == visit)
+            & (tr["TRTESTCD"] == "TUMSTATE")
         ]
+        nt_target_ids = set(
+            tu.loc[
+                (tu["USUBJID"] == usubjid) & (tu["TUORRES"] == "NON-TARGET"),
+                "TULNKID",
+            ].astype(str)
+        )
+        nt_present = nt[
+            (nt["TRLNKID"].astype(str).isin(nt_target_ids))
+            & (nt["TRSTRESC"].isin(["PRESENT", "EQUIVOCAL"]))
+        ]
+
+        ntrgresp = rs[
+            (rs["USUBJID"] == usubjid)
+            & (rs["VISIT"] == visit)
+            & (rs["RSTESTCD"] == "NTRGRESP")
+        ]
+        ntrg_value = (
+            str(ntrgresp.iloc[0]["RSSTRESC"]).strip().upper()
+            if not ntrgresp.empty
+            else ""
+        )
+
+        if nt_present.empty and ntrg_value == "CR":
+            continue
+        if nt_present.empty and not ntrg_value:
+            continue
 
         findings.append(
             Finding(
-                rule_id="PD_THRESHOLD",
-                severity="HIGH",
-                usubjid=usubjid,
+                rule_id="TR-RS-003",
+                severity="Critical",
+                subject_id=usubjid,
                 visit=visit,
-                message=(
-                    f"PD claimed at {visit} but sum increased only "
-                    f"{pct_increase * 100:.1f}% / {abs_increase:.1f}mm from nadir "
-                    f"({nadir_val:g}mm at {nadir_visit} → {current:g}mm) and no new "
-                    f"lesion is recorded in TU. PD requires ≥20% AND ≥5mm, or a new lesion."
-                ),
-                template_id="RESPONSE_THRESHOLD",
-                template_params={
-                    "nadir_sum": nadir_val,
-                    "current_sum": current,
-                    "pct_increase": pct_increase,
-                    "abs_increase": abs_increase,
-                    "pct_threshold": PD_INCREASE_PCT,
-                    "abs_threshold": PD_INCREASE_ABS,
-                    "claimed_response": "PD",
-                    "sums_by_visit": sums_by_visit,
-                    "flagged_visit": visit,
-                    "nadir_visit": nadir_visit,
-                },
+                domain="RS/TR",
+                variable="RSORRES/TRORRES",
+                lineage=lineage_from_row(cr),
                 evidence_rows={
-                    "TR": _evidence_rows(
-                        tr,
-                        (tr["USUBJID"] == usubjid) & (tr["TRTESTCD"] == "SUMDIAM"),
+                    "RS": rows_to_records(
+                        rs[
+                            (rs["USUBJID"] == usubjid)
+                            & (rs["VISIT"] == visit)
+                            & (rs["RSTESTCD"].isin(["OVRLRESP", "NTRGRESP"]))
+                        ]
                     ),
-                    "RS": _evidence_rows(
-                        rs,
-                        (rs["USUBJID"] == usubjid)
-                        & (rs["VISIT"] == visit)
-                        & (rs["RSTESTCD"].isin(["TRGRESP", "OVRLRESP"])),
-                    ),
+                    "TR": rows_to_records(nt),
                 },
-                citation=CITATION_PD,
+                raw_message=(
+                    f"Overall response at {visit} is CR, but non-target disease "
+                    f"is still present (NTRGRESP={ntrg_value!r}, "
+                    f"{len(nt_present)} non-target lesion(s) PRESENT)."
+                ),
+                template_id="CR_NON_TARGET",
+                template_params={
+                    "ntrgresp": ntrg_value,
+                    "non_target_present_ids": nt_present["TRLNKID"].astype(str).tolist(),
+                },
+                citation=CITATION_CR_NT,
             )
         )
 

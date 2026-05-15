@@ -1,16 +1,28 @@
-"""Engine-facing service helpers shared by API routes."""
+"""Shared helpers for API routes."""
 
-import io
 import math
 from pathlib import Path
 
-import pandas as pd
-
 from engine import rules  # noqa: F401  (registers rules)
-from engine.loader import load_csvs
+from engine.finding import Finding
+from engine.loader import load_data
 from engine.registry import run_all
+from translator.translate import translate, translate_all
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+ALLOWED_FILES = {
+    "tu.csv",
+    "tr.csv",
+    "rs.csv",
+    "ecrf_baseline.csv",
+    "ecrf_followup.csv",
+    "ecrf_disease_response.csv",
+    "patient_history.csv",
+    "source_evidence.csv",
+    "expected_issues.csv",
+    "checks_catalog.csv",
+}
 
 
 def _json_safe(obj):
@@ -23,29 +35,39 @@ def _json_safe(obj):
     return obj
 
 
-async def _to_df(upload) -> pd.DataFrame:
-    raw = await upload.read()
-    return pd.read_csv(io.BytesIO(raw), dtype=str, keep_default_na=False)
-
-
-def _prepare(tu: pd.DataFrame, tr: pd.DataFrame, rs: pd.DataFrame):
-    for df in (tu, tr, rs):
-        if "VISITNUM" in df.columns:
-            df["VISITNUM"] = pd.to_numeric(df["VISITNUM"], errors="coerce")
-    tr["TRSTRESN"] = pd.to_numeric(tr["TRSTRESC"], errors="coerce")
-    return tu, tr, rs
-
-
-async def run_findings_from_uploads(tu_file, tr_file, rs_file) -> list[dict]:
-    tu = await _to_df(tu_file)
-    tr = await _to_df(tr_file)
-    rs = await _to_df(rs_file)
-    tu, tr, rs = _prepare(tu, tr, rs)
-    findings = run_all(tu, tr, rs)
+def run_engine(*, enable_llm: bool, model: str) -> list[dict]:
+    data = load_data(DATA_DIR)
+    findings = run_all(data)
+    translate_all(findings, enable_llm=enable_llm, model=model)
     return [_json_safe(f.to_dict()) for f in findings]
 
 
-def run_findings_from_demo() -> list[dict]:
-    tu, tr, rs = load_csvs(DATA_DIR / "tu.csv", DATA_DIR / "tr.csv", DATA_DIR / "rs.csv")
-    findings = run_all(tu, tr, rs)
-    return [_json_safe(f.to_dict()) for f in findings]
+def translate_one(payload: dict, *, enable_llm: bool, model: str) -> dict:
+    """Translate a single finding-shaped dict. Returns the translated dict."""
+    lineage = payload.get("lineage") or {}
+    finding = Finding(
+        rule_id=payload["rule_id"],
+        severity=payload["severity"],
+        subject_id=payload["subject_id"],
+        visit=payload.get("visit"),
+        domain=payload.get("domain", ""),
+        variable=payload.get("variable", ""),
+        lineage=_lineage(lineage),
+        evidence_rows=payload.get("evidence_rows") or {},
+        raw_message=payload.get("raw_message", ""),
+        template_id=payload.get("template_id", ""),
+        template_params=payload.get("template_params") or {},
+        citation=payload.get("citation", ""),
+    )
+    translate(finding, enable_llm=enable_llm, model=model)
+    return _json_safe(finding.to_dict())
+
+
+def _lineage(d: dict):
+    from engine.finding import Lineage
+
+    return Lineage(
+        form=d.get("form", ""),
+        field=d.get("field", ""),
+        source_doc=d.get("source_doc", ""),
+    )

@@ -1,0 +1,16 @@
+subject_id,lesion_id,lesion_type,baseline_site,baseline_laterality,baseline_detail,baseline_date,baseline_measurement,baseline_unit,baseline_method,history_anchor_visit,last_known_measurement_mm,nadir_measurement_mm,notes
+SUBJ001,T01,TARGET,LUNG,RIGHT,UPPER LOBE,2026-01-03,35.0,mm,CT SCAN,Baseline,35.0,35.0,Active baseline target lesion
+SUBJ001,T02,TARGET,LIVER,RIGHT,SEGMENT VIII,2026-01-03,28.0,mm,CT SCAN,Baseline,28.0,28.0,Active baseline target lesion
+SUBJ001,NT01,NON-TARGET,LUNG,BILATERAL,MULTIPLE,2026-01-03,,,CT SCAN,Baseline,,,Baseline non-target disease present
+SUBJ002,T01,TARGET,LIVER,RIGHT,SEGMENT V,2026-01-05,42.0,mm,CT SCAN,Baseline,42.0,42.0,Active baseline target lesion
+SUBJ002,T02,TARGET,LYMPH NODE,LEFT,AXILLARY,2026-01-05,18.0,mm,CT SCAN,Baseline,18.0,18.0,Active baseline target lesion
+SUBJ002,NT01,NON-TARGET,PERITONEUM,,MULTIPLE,2026-01-05,,,CT SCAN,Baseline,,,Baseline non-target disease present
+SUBJ003,T01,TARGET,LUNG,LEFT,LOWER LOBE,2026-01-06,30.0,mm,CT SCAN,Baseline,30.0,30.0,Active baseline target lesion
+SUBJ003,T02,TARGET,ADRENAL GLAND,RIGHT,,2026-01-06,25.0,mm,CT SCAN,Baseline,25.0,25.0,Active baseline target lesion
+SUBJ003,NT01,NON-TARGET,BONE,,PELVIS,2026-01-06,,,CT SCAN,Baseline,,,Baseline non-target disease present
+SUBJ004,T01,TARGET,LIVER,LEFT,SEGMENT II,2026-01-08,50.0,mm,CT SCAN,Baseline,50.0,50.0,Active baseline target lesion
+SUBJ004,T02,TARGET,LYMPH NODE,RIGHT,HILAR,2026-01-08,20.0,mm,CT SCAN,Baseline,20.0,20.0,Active baseline target lesion
+SUBJ004,NT01,NON-TARGET,PERITONEUM,,ASCITES,2026-01-08,,,CT SCAN,Baseline,,,Baseline non-target disease present
+SUBJ005,T01,TARGET,LUNG,RIGHT,MIDDLE LOBE,2026-01-10,33.0,mm,CT SCAN,Baseline,33.0,33.0,Active baseline target lesion
+SUBJ005,T02,TARGET,LIVER,LEFT,SEGMENT III,2026-01-10,40.0,mm,CT SCAN,Baseline,40.0,40.0,Active baseline target lesion
+SUBJ005,NT01,NON-TARGET,PLEURA,RIGHT,EFFUSION,2026-01-10,,,CT SCAN,Baseline,,,Baseline non-target disease present

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from engine import rules  # noqa: F401  (registers rules)
-from engine.loader import load_csvs
+from engine.loader import load_data
 from engine.registry import run_all
 
 
@@ -20,15 +20,13 @@ def _json_safe(obj):
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="SDTM inconsistency engine")
-    parser.add_argument("--tu", required=True, type=Path)
-    parser.add_argument("--tr", required=True, type=Path)
-    parser.add_argument("--rs", required=True, type=Path)
+    parser = argparse.ArgumentParser(description="Klin consistency engine")
+    parser.add_argument("--data", required=True, type=Path)
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
 
-    tu, tr, rs = load_csvs(args.tu, args.tr, args.rs)
-    findings = run_all(tu, tr, rs)
+    data = load_data(args.data)
+    findings = run_all(data)
 
     payload = [_json_safe(f.to_dict()) for f in findings]
     text = json.dumps(payload, indent=2, default=str)

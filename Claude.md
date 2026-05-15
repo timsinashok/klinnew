@@ -1,203 +1,402 @@
-# CLAUDE.md — SDTM Cross-Domain Inconsistency Engine
+# CLAUDE.md — Klin Oncology Consistency Engine
 
-This file is project memory for Claude Code. Read it before starting any session.
+This file is project memory for Claude Code. Read it before starting any session. It supersedes any earlier project briefs.
 
-## Project overview
+---
 
-We are building an SDTM data-quality engine that finds cross-domain and medical-logic inconsistencies in oncology trial data (RECIST 1.1 response assessment). The product is aimed at pharma sponsors and CROs as a tool that lets clinical data managers adjudicate findings in seconds rather than minutes — by always showing the underlying evidence and the rule citation alongside each finding.
+## 1. What we're building
 
-This is not Pinnacle21 — that tool reports SDTM-conformance errors. We catch *logical and medical* inconsistencies that survive Pinnacle21 and the EDC's edit checks.
+A clinical data consistency engine for oncology trials. It takes eCRF data filled by site coordinators, converts it to SDTM in-memory, runs cross-domain and medical-logic checks, and reports inconsistencies back to the coordinator in eCRF terms — with LLM-generated plain-English explanations and suggested fixes.
 
-**Scope for v0:** three SDTM domains (TU, TR, RS), ~8 deterministic rules, a benchmark against a 5-patient synthetic dataset with 11 seeded errors, plus a React frontend for the demo.
+The primary user is the **site coordinator (CSR)** filling the eCRF as patient visits happen. Secondary user is the **CDM (Clinical Data Manager)** at the sponsor reviewing aggregated data. Same engine, two surfaces.
 
-## Current status
+The product wedge: existing validators (Pinnacle21 et al.) speak SDTM and live at the sponsor — they catch errors weeks after they happen. We catch them at the site, in real time, in the language the coordinator already speaks.
 
-Done (in claude.ai before this handoff):
-- eCRF spec for the two source forms (Tumor Assessment Form, Response Evaluation Form) with eCRF→SDTM mapping
-- Synthetic SDTM data: 5 patients, 20 TU rows, 79 TR rows, 53 RS rows
-- Ground truth: 11 seeded errors across 4 categories, with rule citations
-- Architecture decision: deterministic rule engine as the trusted core, with a clearly-bounded LLM anomaly-detection sidecar for the long tail
-- UI direction: per-finding drill-down with chart + evidence rows + RECIST citation, ~5 visualization templates total
+## 2. Two demos to build
 
-Next (this is your job, Claude Code):
-1. Scaffold the project (Python engine + FastAPI + React)
-2. Build the engine and the 8 rules
-3. Run against the synthetic data, hit 11/11 on ground truth
-4. Build the React frontend with the 5 templates
-5. Wire benchmark report into the UI
+**Demo 1 — "The magic demo" (the headline).** A coordinator-facing eCRF entry experience. The user sees a realistic eCRF with multiple tabs (Baseline / Follow-up / Disease Response), fills in a patient's visit, hits Submit (or "Run consistency check"), and sees errors flagged inline with plain-English messages and one-click actions. Built for emotional impact in a sales meeting.
 
-## Architecture
+**Demo 2 — "Data in action" (the technical proof).** Shows the full pipeline as a sequence: eCRF input → mapping → SDTM → checks → translated findings. Each stage is visualizable, with the lineage thread visible throughout. Built for a CTO or technical buyer who needs to understand what's happening under the hood.
+
+Both demos use the same engine. Both use the same synthetic dataset (`/data`). Build the engine once; render it two ways.
+
+## 3. Pipeline architecture
 
 ```
-SDTM input (TU, TR, RS CSVs)
-      |
-      v
-  Rule engine (Python, deterministic)
-      |
-      v
-  Finding objects (typed, with template + params + evidence_rows)
-      |
-      v
-  FastAPI (POST /run -> List[Finding])
-      |
-      v
-  React frontend (template per finding type)
+┌─────────┐    ┌─────────┐    ┌─────────────┐    ┌──────────┐    ┌────────────┐
+│ Stage 1 │ →  │ Stage 2 │ →  │  Stage 3    │ →  │ Stage 4  │ →  │  Stage 5   │
+│ Ingest  │    │  Map    │    │ Normalize   │    │  Check   │    │ Translate  │
+└─────────┘    └─────────┘    └─────────────┘    └──────────┘    └────────────┘
+                    │                                                  ▲
+                    └──────────  Lineage thread ───────────────────────┘
 ```
 
-The LLM anomaly-detection layer is **out of scope for v0**. Architect for it as a separate engine path that produces `NOVEL` findings rendered by an LLM template, but do not build it yet. The deterministic engine alone should catch all 11 seeded errors.
+- **Stage 1: Ingest** — Read eCRF rows in our pre-defined schema. For the demo, we use pre-prepared CSVs (`ecrf_baseline.csv`, `ecrf_followup.csv`, `ecrf_disease_response.csv`). In production, this stage parses EDC exports.
+- **Stage 2: Map** — Transform eCRF rows into SDTM TU / TR / RS rows. Emits *lineage* — every SDTM cell knows which eCRF (form, field, source document) produced it. For the demo, the lineage columns (`source_ecrf_form`, `source_field`, `source_document_id`) are already present on the SDTM rows in the dataset, so the mapping step is a *demonstrated* transformation, not a built-from-scratch ETL.
+- **Stage 3: Normalize** — Apply CDISC controlled terminology. `"computed tomography"` → `"CT SCAN"`. `"Partial Response"` → `"PR"`. Unit conversion (cm → mm). For the demo, the dataset already shows normalized values; checks at this stage flag where normalization was needed.
+- **Stage 4: Check** — Run the deterministic rule engine against the SDTM data. Produces `Finding` objects. This is the engine core.
+- **Stage 5: Translate** — Use the LLM to render each finding as a plain-English message + suggested actions, addressed to the coordinator in eCRF terms. Falls back to deterministic template strings if the LLM is unavailable.
 
-## Core principles (enforce these, do not drift)
+Lineage is created at Stage 2 and consumed at Stage 5. It's how a finding produced at the SDTM layer can be expressed in eCRF language ("On the Disease Response form at Week 16, target response = PR…").
 
-1. **Rule-wise, not error-wise.** A rule produces N findings across the dataset. Never write `check_err_002()`; write `check_pr_threshold()` and let it fire on every visit where PR is claimed below 30% decrease.
+## 4. The dataset
 
-2. **Findings carry evidence.** Every `Finding` includes the actual rows (from TU/TR/RS) that triggered it, not just a message. The UI uses these directly — no extra queries.
+Single fictional study `KLIN-ONC-DEMO-001`. Five subjects (`SUBJ001`–`SUBJ005`). Visits: Baseline + Weeks 8/16/24/32/40/48. Assessment via RECIST 1.1.
 
-3. **Predefined templates, not LLM-rendered.** Each rule declares `template_id` (e.g. `"RESPONSE_THRESHOLD"`) and `template_params`. The React frontend has a fixed registry of template components. This is a regulated-domain product: validated, reproducible output matters more than flexibility. LLM is reserved for the future NOVEL path only.
+Files in `/data`:
 
-4. **Engine runnable standalone.** The Python engine works as a CLI (`python -m engine.run --tu tu.csv --tr tr.csv --rs rs.csv --out findings.json`). The FastAPI layer wraps it. The React app calls FastAPI. Never entangle engine logic with API or UI code.
+| File | Rows | What it is |
+|---|---|---|
+| `source_evidence.csv` | 35 | Radiology reports (ground truth of what the imaging showed) |
+| `ecrf_baseline.csv` | 16 | Baseline Tumor Assessment form rows |
+| `ecrf_followup.csv` | 92 | Follow-up Tumor Assessment form rows |
+| `ecrf_disease_response.csv` | 30 | Disease Response (RECIST) form rows |
+| `patient_history.csv` | 15 | Baseline + nadir context per lesion |
+| `tu.csv` | 18 | SDTM-mapped Tumor Identification |
+| `tr.csv` | 179 | SDTM-mapped Tumor Results |
+| `rs.csv` | 120 | SDTM-mapped Disease Response |
+| `expected_issues.csv` | 11 | Ground truth: seeded issues with severity, message, suggested action |
+| `checks_catalog.csv` | 9 | Rule catalog with layer, scope, severity |
 
-5. **Benchmark is first-class.** Every run can optionally consume `ground_truth.csv` and produce a precision/recall report. This is how we know the engine works.
+The TU / TR / RS files have **lineage columns** on every row: `source_ecrf_form`, `source_field`, `source_document_id`. This is the architectural feature that makes back-translation possible — don't lose them in the loader.
 
-## Project layout
+A column called `demo_issue_tag` exists on eCRF and SDTM rows; it marks records that are part of a seeded issue. **For benchmarking your engine, ignore this column** (it would not exist in production). Use `expected_issues.csv` as ground truth instead. The engine must work without `demo_issue_tag`.
+
+## 5. The 11 seeded issues and 9 check categories
+
+The dataset is designed around 9 check types catching 11 issues. (Some rules catch one issue; some catch two.)
+
+| Check ID | Layer | Scope | Plain-English rule | Severity when failed |
+|---|---|---|---|---|
+| TU-001 | Basic | TU | Lesion ID must not be blank, follow T01/NT01/NEW01 convention | Critical |
+| TU-002 | Within-domain | TU | Same lesion ID must not represent different lesion identities for same subject | Critical |
+| TU-TR-001 | Cross-domain | TU↔TR | Every TR lesion ID must exist in TU | Critical |
+| TR-001 | Basic | TR | Diameter results must be numeric and have a unit | Critical |
+| TR-002 | Standardization | TR | Numeric measurements should be in mm | Suggested Change |
+| TR-003 | Cross-visit | TR | Method changes across visits should be verified | Warning |
+| TR-RS-001 | Medical logic | TR↔RS | PR must be supported by ≥30% target sum decrease | Critical |
+| TU/TR-RS-002 | Medical logic | TU/TR↔RS | New lesion presence must agree with new-lesion response and overall response | Critical |
+| (CR vs non-target) | Medical logic | TR↔RS | Overall CR requires all non-targets absent | Critical |
+
+The 11 ground-truth issues span: 5 Critical, 3 Warning, 3 Suggested Change. See `data/expected_issues.csv` for the full list with `subject_id`, `visit`, `domain_or_sheet`, `variable_or_field`, `message`, and `suggested_action`. Your engine's findings must map to these 11 issue IDs for the benchmark to pass.
+
+## 6. Tech stack
+
+- **Engine:** Python 3.11+, pandas, pytest. Pure deterministic logic.
+- **Translator (Stage 5):** Anthropic Claude API via `anthropic` SDK. Model: `claude-haiku-4-5` for cost/latency, with optional `claude-sonnet-4-6` toggle for higher-quality demo runs. API key via `ANTHROPIC_API_KEY` env var.
+- **API:** FastAPI + uvicorn. No auth in v0. CORS open to localhost.
+- **Frontend:** Vite + React 18 + TypeScript + Tailwind CSS. Recharts for the threshold chart in Demo 1. React Router for the two demos.
+- **No database in v0.** Stateless: data flows through memory. Persistence is v1.
+
+## 7. Project layout
 
 ```
-engine/
-  __init__.py
-  loader.py           # load_csvs(tu_path, tr_path, rs_path) -> (DataFrame, DataFrame, DataFrame)
-  finding.py          # @dataclass Finding(rule_id, severity, usubjid, visit, message, template_id, template_params, evidence_rows)
-  registry.py         # @rule decorator + RULES dict
-  rules/
-    __init__.py
-    counts.py         # max 5 targets, max 2 per organ
-    measurability.py  # lymph node short axis ≥15mm, non-target shouldn't have LDIAM
-    response_math.py  # PR/PD/CR threshold checks (the gold mine)
-    integrity.py      # ghost TRLNKID, NEWLPRES vs TU, NEW at baseline
-    bor.py            # BOR consistency with per-visit history
-  run.py              # entry: load → run all rules → return List[Finding] → optionally write JSON
-
-api/
-  main.py             # FastAPI app
-  routes/
-    run.py            # POST /run (multipart 3 CSVs) → findings
-    benchmark.py      # POST /benchmark (4th CSV: ground truth) → precision/recall
-
-frontend/
-  package.json        # Vite + React + Tailwind
-  src/
-    App.tsx
-    components/
-      UploadPage.tsx
-      FindingsList.tsx
-      FindingCard.tsx
-      DrillDown.tsx
-      templates/
-        ResponseThresholdTemplate.tsx  # chart with PR/PD thresholds
-        LesionCountTemplate.tsx        # grouped bar by organ
-        GhostReferenceTemplate.tsx     # set-diff between TU and TR IDs
-        TimelineMismatchTemplate.tsx   # per-visit response timeline (for BOR + NEWLPRES)
-        MeasurabilityTemplate.tsx      # single-value comparison vs threshold
-
-tests/
-  test_rules.py        # one test per rule; assert it produces the expected findings on the synthetic data
-  test_benchmark.py    # 11/11 on ground truth
-
-data/
-  tu.csv               # provided
-  tr.csv               # provided
-  rs.csv               # provided
-  ground_truth.csv     # provided
-
-benchmark.py           # CLI: python benchmark.py --findings out.json --truth data/ground_truth.csv
+project-root/
+├── CLAUDE.md                   (this file)
+├── data/                       (synthetic dataset, see Section 4)
+├── engine/
+│   ├── __init__.py
+│   ├── loader.py               # load CSVs → pandas DataFrames
+│   ├── finding.py              # @dataclass Finding(rule_id, severity, lineage, evidence, ...)
+│   ├── registry.py             # @rule decorator + RULES dict
+│   ├── rules/
+│   │   ├── __init__.py
+│   │   ├── basic.py            # TU-001, TR-001 (field-level)
+│   │   ├── integrity.py        # TU-TR-001 (ghost lesion), TU-002 (duplicate ID)
+│   │   ├── standardization.py  # TR-002 (mm/cm, term standardization)
+│   │   ├── response_math.py    # TR-RS-001 (PR threshold), CR+non-target conflict, PD threshold
+│   │   ├── cross_visit.py      # TR-003 (method change), large measurement drop, visit window
+│   │   └── new_lesion.py       # TU/TR-RS-002 (new lesion vs response conflict)
+│   └── run.py                  # CLI entry: load → run all rules → emit findings.json
+├── translator/
+│   ├── __init__.py
+│   ├── prompts.py              # prompt templates for LLM
+│   ├── llm.py                  # Anthropic API client (with retries, timeouts)
+│   ├── templater.py            # deterministic fallback strings
+│   └── translate.py            # orchestrator: takes Finding → returns translated Finding
+├── api/
+│   ├── main.py                 # FastAPI app
+│   └── routes/
+│       ├── run.py              # POST /run — run checks on demo data, return findings
+│       ├── translate.py        # POST /translate — translate a finding
+│       └── data.py             # GET /data/{filename} — serve the synthetic data to frontend
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tailwind.config.js
+│   └── src/
+│       ├── main.tsx
+│       ├── App.tsx
+│       ├── routes/
+│       │   ├── Home.tsx               # links to both demos
+│       │   ├── MagicDemo.tsx          # Demo 1: eCRF entry experience
+│       │   └── PipelineDemo.tsx       # Demo 2: data-in-action stage walkthrough
+│       └── components/
+│           ├── SeverityBadge.tsx
+│           ├── FindingCard.tsx
+│           ├── EvidenceTable.tsx
+│           ├── ChartTemplate.tsx      # sum-of-diameters trajectory with thresholds
+│           ├── ECRFTabs.tsx           # Baseline / Follow-up / Disease Response tabs
+│           ├── InlineFlag.tsx         # per-field issue indicator
+│           └── PipelineStage.tsx      # one stage in Demo 2
+├── tests/
+│   ├── test_rules.py            # one test per rule
+│   ├── test_benchmark.py        # 11/11 on ground truth
+│   └── test_translator.py       # template fallback path always works
+├── benchmark.py                 # CLI: compute precision/recall vs expected_issues.csv
+└── README.md
 ```
 
-## The Finding dataclass (the contract)
+## 8. Stage-by-stage build plan
 
-```python
-from dataclasses import dataclass, field
-from typing import Any, Literal
+This is the build sequence for Claude Code. Each stage is a self-contained session with a clear acceptance test. Don't merge stages — finish one, verify, then start the next.
 
-Severity = Literal["LOW", "MEDIUM", "HIGH"]
+### Stage 0 — Setup (~30 min)
 
-@dataclass
-class Finding:
-    rule_id: str                       # e.g. "PR_THRESHOLD"
-    severity: Severity
-    usubjid: str
-    visit: str | None                  # may be None for subject-level findings (e.g. BOR)
-    message: str                       # plain-language, template-filled
-    template_id: str                   # e.g. "RESPONSE_THRESHOLD" — picks the React component
-    template_params: dict[str, Any]    # whatever that template needs to render
-    evidence_rows: dict[str, list[dict]]  # {"TR": [...rows...], "RS": [...rows...]}
-    citation: str                      # e.g. "RECIST 1.1 § 11.3.5"
+**Goal:** Repo initialized, data in place, dev environments run.
+
+**Build:**
+- Project skeleton matching Section 7 layout (empty files OK)
+- `requirements.txt` (`pandas`, `pytest`, `fastapi`, `uvicorn`, `anthropic`, `pydantic`)
+- `frontend/package.json` with Vite + React + TS + Tailwind + Recharts + React Router
+- `.env.example` with `ANTHROPIC_API_KEY=` and `.gitignore` including `.env`
+- All 10 CSVs already in `/data` (don't move them)
+
+**Acceptance:**
+- `pytest` runs (zero tests, but no errors)
+- `npm run dev` starts the frontend at localhost:5173 with a "Hello" page
+
+### Stage 1 — Engine core + 3 rules (~90 min)
+
+**Goal:** First end-to-end run: load CSVs → execute 3 rules → produce findings JSON.
+
+**Build:**
+- `engine/loader.py` — `load_data(data_dir)` returns dict of pandas DataFrames keyed by `tu`, `tr`, `rs`, `ecrf_baseline`, `ecrf_followup`, `ecrf_disease_response`, `patient_history`, `source_evidence`
+- `engine/finding.py` — `Finding` dataclass with: `rule_id, severity, subject_id, visit, domain, variable, lineage (form, field, source_doc), evidence_rows, raw_message, template_id, template_params`
+- `engine/registry.py` — `@rule(id, severity, layer)` decorator that appends to `RULES`
+- `engine/rules/integrity.py` — implement TU-TR-001 (ghost lesion: every TR.TRLNKID must exist in TU for same subject)
+- `engine/rules/response_math.py` — implement TR-RS-001 (PR threshold: when RS.RSORRES=PR at a visit, the TR sum-of-diameters at that visit must show ≥30% decrease from baseline)
+- `engine/rules/basic.py` — implement TU-001 (TULNKID present + follows T01/NT01/NEW01 pattern)
+- `engine/run.py` — CLI: `python -m engine.run --data ./data --out findings.json`
+
+**Acceptance:**
+- `python -m engine.run` produces a `findings.json` file
+- The file contains findings for at least these issue IDs from `expected_issues.csv`: CRIT-002 (TR lesion T03 not in TU for SUBJ003), CRIT-003 (PR threshold fail SUBJ001 Week 16)
+- All findings have non-empty `lineage` fields (form, field, source_doc)
+- No findings produced for the clean subjects (verify by spot-check)
+
+### Stage 2 — Complete rule set (~90 min)
+
+**Goal:** Catch 11/11 ground-truth issues. Zero false positives on clean records.
+
+**Build remaining rules:**
+- `engine/rules/integrity.py` — TU-002 (duplicate TULNKID with conflicting TULOC/TUORRES within same subject)
+- `engine/rules/new_lesion.py` — TU/TR-RS-002 (TU has NEW lesion at a visit AND RS at same visit says no new lesions / response = PR)
+- `engine/rules/response_math.py` — CR-vs-non-target rule (RSORRES=CR for overall response BUT a non-target in TR is PRESENT at same visit)
+- `engine/rules/standardization.py` — TR-002 (flag rows where `TRORRESU != "mm"` even if `TRSTRESU == "mm"`)
+- `engine/rules/cross_visit.py` — TR-003 (TRMETHOD changes across visits for same subject) + large drop (visit-to-visit % change exceeding threshold) + visit window (TRDTC outside expected window)
+
+**Build `benchmark.py`:**
+- Load `findings.json` produced by engine
+- Load `data/expected_issues.csv`
+- Match by `subject_id` + `visit` + `domain_or_sheet`
+- Output precision, recall, and a table of (expected ↔ found) matches
+- Print false positives and false negatives explicitly
+
+**Acceptance:**
+- `python benchmark.py` shows 11 expected, 11 found, 0 false positives
+- All severities (Critical / Warning / Suggested Change) represented in the findings
+- `pytest tests/test_rules.py` passes — one test per rule asserting it fires on its target issue and not on clean data
+
+### Stage 3 — Stage 5 (LLM translation) (~90 min)
+
+**Goal:** Each finding has a coordinator-friendly message generated by the LLM, with deterministic fallback.
+
+**Build:**
+- `translator/prompts.py` — system + user prompt templates. Example structure below.
+- `translator/llm.py` — Anthropic API client. Configurable model (`claude-haiku-4-5` default). Timeout 5s. Retry once on transient error. Returns parsed `{user_message, suggested_actions: [...], confidence}`.
+- `translator/templater.py` — deterministic template strings per rule_id. Always available, no API needed. Used as fallback or in tests.
+- `translator/translate.py` — main entry: takes a `Finding`, attempts LLM call, falls back to template on any error or if `ANTHROPIC_API_KEY` is unset. Returns `Finding` with `user_message` and `suggested_actions` populated.
+
+**Prompt design** (skeleton; tune per rule):
+```
+System: You are a clinical data quality assistant explaining inconsistencies to a 
+site coordinator filling an eCRF for an oncology trial (RECIST 1.1). 
+Speak in eCRF/clinical terms only — never mention SDTM, TUSTRESC, RSORRES, 
+or any technical schema names. Refer to forms by name and fields by their 
+human label. Be concise: 2-3 sentences for the message, 1-2 specific 
+suggested actions.
+
+User: 
+Issue type: {rule_id}
+Severity: {severity}  
+Subject: {subject_id}, visit: {visit}
+Affected eCRF form: {lineage.form}
+Affected field: {lineage.field}  
+Evidence: {evidence_rows in plain JSON}
+RECIST rule violated (for your reference): {citation}
+
+Output JSON with keys: user_message, suggested_actions (array of strings).
 ```
 
-## The 8 rules to implement
+**Acceptance:**
+- All 11 findings have `user_message` populated
+- Each message references the eCRF form name and field by their human label, never SDTM variable names
+- Run `pytest tests/test_translator.py` with no API key set → all tests pass (using fallback templates)
+- Run with API key set → at least one finding renders differently via LLM than via template (proves LLM path is wired)
 
-| ID                 | Severity | Template                | Catches |
-|--------------------|----------|-------------------------|---------|
-| `PR_THRESHOLD`     | HIGH     | RESPONSE_THRESHOLD      | ERR-002, ERR-003 |
-| `PD_THRESHOLD`     | HIGH     | RESPONSE_THRESHOLD      | ERR-011 |
-| `CR_NONTARGET`     | HIGH     | TIMELINE_MISMATCH       | ERR-006 |
-| `BOR_CONSISTENCY`  | HIGH     | TIMELINE_MISMATCH       | ERR-004 |
-| `MAX_TARGETS`      | HIGH     | LESION_COUNT            | ERR-007 (the count-of-5 portion) |
-| `MAX_PER_ORGAN`    | HIGH     | LESION_COUNT            | ERR-007 (the per-organ portion) |
-| `LN_MEASURABILITY` | MEDIUM   | MEASURABILITY           | ERR-005 |
-| `NONTARGET_LDIAM`  | MEDIUM   | MEASURABILITY           | ERR-001 |
-| `NEWLPRES_VS_TU`   | HIGH     | TIMELINE_MISMATCH       | ERR-008 |
-| `GHOST_TRLNKID`    | HIGH     | GHOST_REFERENCE         | ERR-010 |
-| `NEW_AT_BASELINE`  | HIGH     | MEASURABILITY (single row callout) | ERR-009 |
+### Stage 4 — API layer (~60 min)
 
-That's 11 rules covering 11 errors (some errors are caught by two related rules; benchmark just needs each error_id mapped to at least one rule).
+**Goal:** Engine reachable over HTTP; frontend can fetch findings and the underlying data.
 
-## The 5 visualization templates
+**Build:**
+- `api/main.py` — FastAPI app, CORS for localhost:5173
+- `api/routes/run.py` — `POST /api/run` runs the engine against `/data`, returns translated findings as JSON. Optional query params: `enable_llm` (default true), `model` (default `claude-haiku-4-5`).
+- `api/routes/data.py` — `GET /api/data/{name}` serves any CSV from `/data` (whitelisted filenames) so the frontend can show raw eCRF and SDTM tables in Demo 2.
+- `api/routes/translate.py` — `POST /api/translate` takes a single Finding-like dict, returns the translated version. Used for demo-time re-renders without re-running checks.
 
-1. **RESPONSE_THRESHOLD** — line chart of SUMDIAM across visits with horizontal threshold lines (baseline, PR threshold = baseline × 0.7, PD threshold = nadir × 1.2). Misclassified points highlighted red. Used for PR/PD findings.
+**Acceptance:**
+- `uvicorn api.main:app --reload` starts cleanly
+- `curl -X POST localhost:8000/api/run` returns valid JSON with 11 findings, all translated
+- `curl localhost:8000/api/data/tu.csv` returns the TU CSV contents
 
-2. **LESION_COUNT** — horizontal bar per organ showing count vs limit; over-limit bars in red. Below: the TU rows that put it over. Used for max-target / per-organ findings.
+### Stage 5 — React shared components (~60 min)
 
-3. **GHOST_REFERENCE** — two-column set comparison. Left: TU lesion IDs for the subject. Right: TR lesion IDs at the visit. Orphaned IDs highlighted. Used for missing-reference findings.
+**Goal:** Foundation pieces both demos use.
 
-4. **TIMELINE_MISMATCH** — horizontal timeline of per-visit responses with the disputed claim called out. Used for BOR, NEWLPRES, and CR-with-non-target-present findings.
+**Build:**
+- Vite + React + TS + Tailwind + Recharts + React Router scaffold (probably done in Stage 0; verify)
+- `components/SeverityBadge.tsx` — pill, red/amber/blue per severity
+- `components/EvidenceTable.tsx` — renders an array of row objects as a monospace table, highlights specific cells
+- `components/FindingCard.tsx` — compact card: severity badge, rule_id, subject, visit, user_message, "view details" expansion
+- `components/ChartTemplate.tsx` — sum-of-diameters line chart with horizontal threshold lines (Recharts). Used in PR_THRESHOLD and PD_THRESHOLD findings.
+- `routes/Home.tsx` — landing page with two buttons: "Magic Demo" / "Pipeline Demo"
+- Routing wired up
 
-5. **MEASURABILITY** — single-number comparison (actual vs threshold) with the TU+TR rows below. Used for lymph-node short-axis, non-target measurement, NEW-at-baseline findings.
+**Acceptance:**
+- Home page loads, both demo routes navigable
+- FindingCard renders with mock data
+- ChartTemplate renders the SUBJ001 PR-threshold scenario (baseline 63mm, Week 16 56.5mm, threshold line at 44mm) correctly
 
-## Data already on disk
+### Stage 6 — Demo 2: Pipeline ("data in action") (~90 min)
 
-The 5-patient synthetic dataset and the inconsistency walkthrough are in `data/` (drop them in when you start). Files: `tu.csv`, `tr.csv`, `rs.csv`, `ground_truth.csv`, `inconsistency_walkthrough.md`, `ecrf_design.md`, `generate_sdtm_data.py`.
+**Goal:** Walk through the 5 stages of the pipeline with real data. Each stage clickable, lineage thread visible.
 
-## Tech stack — pinned choices
+**Build `routes/PipelineDemo.tsx`:**
+- Multi-step layout: 5 panels horizontally (Stages 1-5) or vertical stepper
+- Stage 1 (Ingest): show `ecrf_baseline.csv` and `ecrf_followup.csv` for SUBJ001 in a readable table
+- Stage 2 (Map): show side-by-side: eCRF row on left, the SDTM TU+TR rows it produced on right, with arrows/highlights showing the mapping. Pick 1-2 hero rows.
+- Stage 3 (Normalize): show a before/after for the standardization examples: `"computed tomography"` → `"CT SCAN"`, `"Partial Response"` → `"PR"`
+- Stage 4 (Check): show the engine running (visually: animated checks list ticking through), then the resulting findings count
+- Stage 5 (Translate): show one finding raw (technical SDTM-language version) vs translated (user_message), demonstrating the LLM rendering
+- Lineage indicator: persistent breadcrumb at top showing the subject/visit being followed
 
-- **Engine:** Python 3.11+, pandas, dataclasses, pytest
-- **API:** FastAPI + uvicorn, no auth in v0
-- **Frontend:** Vite + React 18 + TypeScript + Tailwind CSS, Recharts for the line chart in RESPONSE_THRESHOLD
-- **No database in v0.** Stateless: upload → run → return findings. Persistence is v1.
+**Acceptance:**
+- Demo walkable end-to-end in <90 seconds for a viewer
+- Each stage shows actual data from the API, not mocked
+- The same subject (SUBJ001) is traced through all 5 stages
 
-## Suggested first sessions
+### Stage 7 — Demo 1: Magic eCRF demo (~120 min)
 
-**Session 1 — engine skeleton.** Scaffold the directory. Implement `loader.py`, `finding.py`, `registry.py`. Implement two rules end-to-end: `PR_THRESHOLD` and `GHOST_TRLNKID`. Run against the synthetic CSVs. Verify findings for ERR-002, ERR-003, ERR-010.
+**Goal:** The headline experience. Coordinator fills eCRF, hits validation, sees inline errors with actions.
 
-**Session 2 — the rest of the rules.** Implement the remaining 9 rules. Run `pytest`. Run `benchmark.py`. Goal: 11/11 on ground truth, 0 false positives on Patient 01.
+**Build `routes/MagicDemo.tsx`:**
+- Three tabs: "Baseline" / "Follow-up" / "Disease Response"
+- Pre-fill SUBJ001's complete data across all visits (this is the data that contains 2-3 seeded issues for this subject — PR threshold fail at Week 16, plus auto-fixable standardization issues)
+- Field-level eCRF form UI: dropdowns for codes, inputs for measurements, date pickers
+- Top-right "Run consistency check" button (or auto-run on tab switch)
+- After check runs:
+  - Inline indicators next to fields with issues (yellow exclamation for Warning, red for Critical, blue for Suggested Change)
+  - Click an indicator → drawer/modal with the FindingCard, evidence, ChartTemplate (for response-math findings), and action buttons
+  - Actions per severity: Critical → "Flag for investigator review" / "Edit field". Warning → "Acknowledge". Suggested Change → "Auto-fix" (one-click apply)
+- Submit button: gated by Critical findings (must be flagged or resolved)
+- Right rail summary: count of findings by severity
 
-**Session 3 — FastAPI + React skeleton.** Wrap the engine in FastAPI. Scaffold the React app with upload page, findings list, and a placeholder drill-down. Connect them end-to-end with the synthetic data baked in as default.
+**Acceptance:**
+- Loading SUBJ001 Week 16 Disease Response tab and hitting "Run consistency check" produces:
+  1. A red indicator next to the `target_response` field (PR threshold)
+  2. A blue indicator on at least one field in Baseline (standardization)
+- Clicking the red indicator opens the drilldown showing the chart, the evidence rows, and the translated message
+- Clicking "Auto-fix" on the blue indicator updates the form field value
 
-**Session 4 — the 5 templates.** Build each template component. The RESPONSE_THRESHOLD template (chart with thresholds) is the hardest; reference the mockup we already designed in claude.ai for the visual target.
+### Stage 8 — Polish (~60 min)
 
-**Session 5 — polish.** Severity coloring, filter sidebar, benchmark tab, demo-mode toggle that auto-loads the synthetic data.
+**Goal:** Demo-ready. Loads fast, looks clean, narrative is clear.
 
-## What NOT to do (anti-goals)
+**Build:**
+- Loading skeletons during API calls
+- Severity colors consistent across both demos
+- Brief narrative tooltips at key moments ("This is the lineage thread", "This finding was generated by the LLM")
+- A reset button on Magic Demo to re-load clean state
+- README with run instructions
 
-- Do not introduce an LLM into the deterministic path. Anomaly detection is a separate future engine.
-- Do not invent new SDTM variable names. Use the exact CDISC names: `TULNKID`, `TRLNKID`, `RSORRES`, `RSTESTCD`, etc.
-- Do not hardcode patient IDs anywhere in the engine. The engine must work on any conforming dataset.
-- Do not skip the benchmark step. After every meaningful change, re-run benchmark.py.
-- Do not over-format React components. Match the design system in the mockup: flat, clean, monospace for data values, red only for severity/incorrectness.
+**Acceptance:**
+- Cold-start to first interactive screen <3 seconds
+- Both demos clickable from Home in <5 seconds total
+- No console errors
 
-## References
+---
 
-- RECIST 1.1: Eisenhauer et al., *Eur J Cancer* 45 (2009) 228–247
-- SDTM IG (Implementation Guide), CDISC: https://www.cdisc.org/standards/foundational/sdtm
-- The inconsistency walkthrough in `data/inconsistency_walkthrough.md` explains every seeded error in plain language with the corresponding RECIST citation
+## 9. LLM integration (Stage 5) — detailed guidance
+
+The LLM is used **only** for translating findings, not for detecting them. The deterministic engine produces structured Finding objects; the LLM renders them as natural language. This separation is critical.
+
+**Why this matters:**
+- The rule engine output is auditable and reproducible (regulatory requirement)
+- The LLM never *decides* whether something is an issue — only how to describe it
+- A hallucination in the LLM produces a bad explanation, not a bad finding
+- We can run completely without the LLM (template fallback) — the product still works
+
+**Prompt principles:**
+- The system prompt forbids SDTM terminology in the output
+- The user prompt gives the model: rule_id, severity, lineage (form/field), evidence rows, and a citation
+- The model returns structured JSON ({user_message, suggested_actions})
+- Cap output length: 2-3 sentences for message, 1-2 short suggested actions
+- Temperature: 0.2 (some variation in phrasing, but consistent factual content)
+
+**Failure modes to handle:**
+- API timeout → use template fallback for this finding
+- Malformed JSON output → retry once, then template fallback
+- API key missing → all findings use templates (and log a warning at startup)
+- Rate limit → exponential backoff, then template fallback
+
+**Caching:**
+- Cache LLM outputs keyed by `(rule_id, lineage, evidence_hash)`. Same finding → same message across re-runs.
+- In-memory dict is enough for v0; Redis for v1.
+
+## 10. Principles (do not drift)
+
+1. **Rule-wise, not error-wise.** Never write `check_crit_001()`. Write `check_pr_threshold()` and let it fire on every visit where PR is claimed below 30%.
+
+2. **Findings carry lineage and evidence.** Every Finding includes the eCRF form name, field name, source document ID, and the actual rows from TU/TR/RS used to make the decision. The UI uses these directly.
+
+3. **Deterministic core, LLM only at Stage 5.** Never call the LLM during rule evaluation. The check engine is pure Python with no external dependencies. The translator is the only LLM consumer.
+
+4. **Speak the coordinator's language.** User-facing text never mentions SDTM variable names. Always use eCRF form and field labels. The system prompt enforces this; the templater respects it.
+
+5. **Severity drives behavior.** Critical blocks submission. Warning shows banner with acknowledge. Suggested Change offers one-click auto-fix. These mappings are explicit in the UI, not implicit.
+
+6. **No false positives on clean data.** Patient 01 (SUBJ001 through Week 8) and most clean records should produce zero findings. Don't write rules that fire spuriously — better to miss a subtle issue than to cry wolf.
+
+7. **Engine works without the API and without the frontend.** `python -m engine.run --data ./data --out findings.json` must always work. The API and React app are presentation layers around it.
+
+## 11. Out of scope for v0
+
+- Anomaly detection layer (LLM looking for novel patterns the rules don't cover). Architect for it (have a NOVEL finding type with an LLM template) but don't build it.
+- Multi-study or multi-customer. Hardcode `KLIN-ONC-DEMO-001`.
+- Authentication, RBAC, multi-tenancy.
+- EDC integration. The eCRF tabs in Magic Demo simulate an EDC, not connect to one.
+- Configurable rules per sponsor. All rules are hardcoded in the engine.
+- iRECIST, RECIST 1.2, or any therapeutic area other than oncology.
+- Real ALCOA+ audit trail. We log to console; persistence is v1.
+
+## 12. References
+
+- **RECIST 1.1:** Eisenhauer et al., *Eur J Cancer* 45 (2009) 228–247
+- **SDTM IG:** CDISC Implementation Guide, current version
+- **CDISC controlled terminology:** for TR-002 standardization rule
+- **Inconsistency walkthrough:** `data/source_evidence.csv` and `data/expected_issues.csv` together tell the clinical story behind each seeded issue. Read both before writing rules.
 
 ## When in doubt
 
-Read `data/inconsistency_walkthrough.md`. It is the project's clinical-logic spec. If a rule's behavior is unclear, that doc tells you what should happen.
+Read `data/expected_issues.csv` — it specifies, in plain English, exactly what each of the 11 findings should look like, including the `message` and `suggested_action` strings. Your engine's output should match the semantics of those fields. Your LLM-translated output should be at least as clear and ideally more personalized.

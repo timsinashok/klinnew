@@ -1,48 +1,76 @@
+import { useState } from "react";
 import type { Finding } from "../types";
+import { ChartTemplate } from "./ChartTemplate";
+import { EvidenceTable } from "./EvidenceTable";
+import { SeverityBadge } from "./SeverityBadge";
 
-const SEV_CLASS: Record<string, string> = {
-  HIGH: "bg-red-100 text-red-800 border-red-300",
-  MEDIUM: "bg-amber-100 text-amber-800 border-amber-300",
-  LOW: "bg-neutral-100 text-neutral-800 border-neutral-300",
-};
+export function FindingCard({ finding }: { finding: Finding }) {
+  const [open, setOpen] = useState(false);
+  const hasChart = finding.template_id === "RESPONSE_THRESHOLD";
 
-export function FindingCard({
-  finding,
-  selected,
-  onClick,
-}: {
-  finding: Finding;
-  selected: boolean;
-  onClick: () => void;
-}) {
   return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left border rounded p-3 mb-2 hover:bg-neutral-100 transition ${
-        selected ? "border-neutral-900 bg-white" : "border-neutral-200 bg-white"
-      }`}
-    >
-      <div className="flex items-center gap-2 mb-1">
-        <span
-          className={`text-xs font-semibold px-1.5 py-0.5 rounded border ${
-            SEV_CLASS[finding.severity]
-          }`}
-        >
-          {finding.severity}
-        </span>
-        <span className="mono text-xs text-neutral-600">
-          {finding.rule_id}
-        </span>
-      </div>
-      <div className="text-sm font-medium">
-        <span className="mono">{finding.usubjid}</span>
-        {finding.visit && (
-          <span className="mono text-neutral-500"> · {finding.visit}</span>
-        )}
-      </div>
-      <div className="text-sm text-neutral-700 mt-1 line-clamp-2">
-        {finding.message}
-      </div>
-    </button>
+    <div className="border rounded bg-white">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full text-left p-3 flex flex-col gap-1 hover:bg-neutral-50"
+      >
+        <div className="flex items-center gap-2 text-xs">
+          <SeverityBadge severity={finding.severity} />
+          <span className="mono text-neutral-500">{finding.rule_id}</span>
+          <span className="ml-auto mono text-neutral-400">
+            {finding.translator_source || "—"}
+          </span>
+        </div>
+        <div className="text-sm font-medium">
+          <span className="mono">{finding.subject_id}</span>
+          {finding.visit && (
+            <span className="mono text-neutral-500"> · {finding.visit}</span>
+          )}
+        </div>
+        <div className="text-sm text-neutral-700">{finding.user_message}</div>
+      </button>
+
+      {open && (
+        <div className="border-t bg-neutral-50 p-3 space-y-4">
+          <div className="text-xs">
+            <span className="text-neutral-500">eCRF: </span>
+            <span className="mono">
+              {finding.lineage.form} / {finding.lineage.field}
+            </span>
+            <span className="text-neutral-500 ml-2">source: </span>
+            <span className="mono">{finding.lineage.source_doc}</span>
+          </div>
+
+          {finding.suggested_actions.length > 0 && (
+            <div>
+              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
+                Suggested actions
+              </div>
+              <ul className="text-sm space-y-1 list-disc list-inside text-neutral-700">
+                {finding.suggested_actions.map((a, i) => (
+                  <li key={i}>{a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {hasChart && <ChartTemplate finding={finding} />}
+
+          {Object.entries(finding.evidence_rows).map(([domain, rows]) => (
+            <EvidenceTable
+              key={domain}
+              title={domain}
+              rows={rows}
+            />
+          ))}
+
+          {finding.citation && (
+            <div className="text-xs italic text-neutral-500">
+              {finding.citation}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

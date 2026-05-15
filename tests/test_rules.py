@@ -2,101 +2,104 @@ from pathlib import Path
 
 import pytest
 
-from engine import rules  # noqa: F401
-from engine.loader import load_csvs
+from engine import rules  # noqa: F401  (registers rules)
+from engine.loader import load_data
 from engine.registry import RULES, run_all
 
-DATA = Path(__file__).resolve().parent.parent / "data"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
 @pytest.fixture(scope="module")
-def datasets():
-    return load_csvs(DATA / "tu.csv", DATA / "tr.csv", DATA / "rs.csv")
-
-
-@pytest.fixture(scope="module")
-def findings(datasets):
-    tu, tr, rs = datasets
-    return run_all(tu, tr, rs)
+def findings():
+    return run_all(load_data(DATA_DIR))
 
 
 def _by_rule(findings, rule_id):
     return [f for f in findings if f.rule_id == rule_id]
 
 
-def test_pr_threshold_fires_on_site02(findings):
-    fs = _by_rule(findings, "PR_THRESHOLD")
-    visits = {(f.usubjid, f.visit) for f in fs}
-    assert ("SITE01-0002", "C2D1") in visits
-    assert ("SITE01-0002", "C4D1") in visits
-    assert all(f.usubjid == "SITE01-0002" for f in fs)
+def test_all_rules_registered():
+    expected = {
+        "TU-001", "TU-002", "TU-TR-001",
+        "TR-001", "TR-002", "TR-003", "LARGE_DROP", "VISIT_WINDOW",
+        "TR-RS-001", "TR-RS-003", "TU/TR-RS-002",
+    }
+    assert expected <= set(RULES.keys())
 
 
-def test_pd_threshold_fires_on_site05(findings):
-    fs = _by_rule(findings, "PD_THRESHOLD")
-    assert len(fs) == 1
-    assert fs[0].usubjid == "SITE01-0005"
-    assert fs[0].visit == "C4D1"
-
-
-def test_ghost_trlnkid(findings):
-    fs = _by_rule(findings, "GHOST_TRLNKID")
-    assert len(fs) == 1
-    assert fs[0].usubjid == "SITE01-0005"
-    assert fs[0].template_params["ghost_id"] == "L4"
-
-
-def test_max_targets(findings):
-    fs = _by_rule(findings, "MAX_TARGETS")
-    assert [f.usubjid for f in fs] == ["SITE01-0004"]
-
-
-def test_max_per_organ(findings):
-    fs = _by_rule(findings, "MAX_PER_ORGAN")
-    assert [(f.usubjid, f.template_params["organ"]) for f in fs] == [
-        ("SITE01-0004", "LIVER")
+def test_tu_002_catches_subj005(findings):
+    fs = _by_rule(findings, "TU-002")
+    assert [(f.subject_id, f.template_params["lesion_id"]) for f in fs] == [
+        ("SUBJ005", "T01")
     ]
 
 
-def test_ln_measurability(findings):
-    fs = _by_rule(findings, "LN_MEASURABILITY")
-    assert [f.usubjid for f in fs] == ["SITE01-0003"]
-    assert fs[0].template_params["actual"] == 12.0
+def test_tu_tr_001(findings):
+    fs = _by_rule(findings, "TU-TR-001")
+    keys = {(f.subject_id, f.visit, f.template_params["ghost_id"]) for f in fs}
+    assert keys == {("SUBJ003", "Week 16", "T03")}
 
 
-def test_nontarget_ldiam(findings):
-    fs = _by_rule(findings, "NONTARGET_LDIAM")
-    assert [(f.usubjid, f.visit) for f in fs] == [("SITE01-0002", "SCREENING")]
+def test_tr_rs_001(findings):
+    fs = _by_rule(findings, "TR-RS-001")
+    pairs = {(f.subject_id, f.visit) for f in fs}
+    assert pairs == {("SUBJ001", "Week 16")}
+    f = fs[0]
+    assert f.template_params["baseline_sum"] == 63.0
+    assert f.template_params["current_sum"] == 56.5
 
 
-def test_newlpres_vs_tu(findings):
-    fs = _by_rule(findings, "NEWLPRES_VS_TU")
-    assert [(f.usubjid, f.visit) for f in fs] == [("SITE01-0004", "C4D1")]
+def test_tu_tr_rs_002(findings):
+    fs = _by_rule(findings, "TU/TR-RS-002")
+    assert [(f.subject_id, f.visit) for f in fs] == [("SUBJ002", "Week 24")]
 
 
-def test_new_at_baseline(findings):
-    fs = _by_rule(findings, "NEW_AT_BASELINE")
-    assert [(f.usubjid, f.visit) for f in fs] == [("SITE01-0005", "SCREENING")]
+def test_tr_rs_003(findings):
+    fs = _by_rule(findings, "TR-RS-003")
+    assert [(f.subject_id, f.visit) for f in fs] == [("SUBJ004", "Week 32")]
 
 
-def test_bor_consistency(findings):
-    fs = _by_rule(findings, "BOR_CONSISTENCY")
-    assert [f.usubjid for f in fs] == ["SITE01-0002"]
+def test_tr_003_only_baseline_deviation(findings):
+    fs = _by_rule(findings, "TR-003")
+    assert [(f.subject_id, f.visit) for f in fs] == [("SUBJ002", "Week 32")]
 
 
-def test_cr_nontarget(findings):
-    fs = _by_rule(findings, "CR_NONTARGET")
-    assert [(f.usubjid, f.visit) for f in fs] == [("SITE01-0003", "C4D1")]
+def test_large_drop(findings):
+    fs = _by_rule(findings, "LARGE_DROP")
+    assert [(f.subject_id, f.visit) for f in fs] == [("SUBJ003", "Week 24")]
 
 
-def test_no_findings_on_clean_patient(findings):
-    assert [f for f in findings if f.usubjid == "SITE01-0001"] == []
+def test_visit_window(findings):
+    fs = _by_rule(findings, "VISIT_WINDOW")
+    assert [(f.subject_id, f.visit) for f in fs] == [("SUBJ001", "Week 40")]
 
 
-def test_all_rules_registered():
-    expected = {
-        "PR_THRESHOLD", "PD_THRESHOLD", "GHOST_TRLNKID", "MAX_TARGETS",
-        "MAX_PER_ORGAN", "LN_MEASURABILITY", "NONTARGET_LDIAM",
-        "NEWLPRES_VS_TU", "NEW_AT_BASELINE", "BOR_CONSISTENCY", "CR_NONTARGET",
+def test_tr_002_three_standardizations(findings):
+    fs = _by_rule(findings, "TR-002")
+    keys = {(f.subject_id, f.visit, f.template_params["field"]) for f in fs}
+    assert keys == {
+        ("SUBJ001", "Baseline", "assessment_method_raw"),
+        ("SUBJ001", "Week 16", "target_lesion_response_raw"),
+        ("SUBJ003", "Week 8", "measurement_unit_raw"),
     }
-    assert expected.issubset(RULES.keys())
+
+
+def test_tu_001_and_tr_001_silent(findings):
+    assert _by_rule(findings, "TU-001") == []
+    assert _by_rule(findings, "TR-001") == []
+
+
+def test_lineage_populated_for_every_finding(findings):
+    for f in findings:
+        assert f.lineage.form, f"{f.rule_id} missing form"
+        assert f.lineage.field, f"{f.rule_id} missing field"
+        assert f.lineage.source_doc, f"{f.rule_id} missing source_doc"
+
+
+def test_subj001_clean_except_seeded(findings):
+    seeded_subj001_rules = {"TR-RS-001", "TR-002", "VISIT_WINDOW"}
+    for f in findings:
+        if f.subject_id == "SUBJ001":
+            assert f.rule_id in seeded_subj001_rules, (
+                f"unexpected SUBJ001 finding from {f.rule_id} at {f.visit}"
+            )

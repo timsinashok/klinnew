@@ -1,28 +1,39 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
 
-from engine.finding import Finding
+from engine.finding import Finding, Severity
 
-RuleFn = Callable[[pd.DataFrame, pd.DataFrame, pd.DataFrame], list[Finding]]
-RULES: dict[str, RuleFn] = {}
+RuleFn = Callable[[dict[str, pd.DataFrame]], list[Finding]]
 
 
-def rule(rule_id: str) -> Callable[[RuleFn], RuleFn]:
+@dataclass
+class RuleMeta:
+    id: str
+    severity: Severity
+    layer: str
+    fn: RuleFn
+
+
+RULES: dict[str, RuleMeta] = {}
+
+
+def rule(
+    id: str, severity: Severity, layer: str
+) -> Callable[[RuleFn], RuleFn]:
     def decorator(fn: RuleFn) -> RuleFn:
-        if rule_id in RULES:
-            raise ValueError(f"rule {rule_id} already registered")
-        RULES[rule_id] = fn
+        if id in RULES:
+            raise ValueError(f"rule {id} already registered")
+        RULES[id] = RuleMeta(id=id, severity=severity, layer=layer, fn=fn)
         return fn
 
     return decorator
 
 
-def run_all(
-    tu: pd.DataFrame, tr: pd.DataFrame, rs: pd.DataFrame
-) -> list[Finding]:
+def run_all(data: dict[str, pd.DataFrame]) -> list[Finding]:
     findings: list[Finding] = []
-    for fn in RULES.values():
-        findings.extend(fn(tu, tr, rs))
+    for meta in RULES.values():
+        findings.extend(meta.fn(data))
     return findings

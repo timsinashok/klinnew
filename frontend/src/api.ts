@@ -1,32 +1,69 @@
-import type { BenchmarkReport, Finding } from "./types";
+import type { Finding, RunResponse } from "./types";
 
-const BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8011";
+const BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 
-export async function fetchDemo(): Promise<Finding[]> {
-  const r = await fetch(`${BASE}/demo`);
-  if (!r.ok) throw new Error(`demo failed: ${r.status}`);
-  return (await r.json()).findings;
-}
-
-export async function fetchBenchmarkDemo(): Promise<{
-  findings: Finding[];
-  report: BenchmarkReport;
-}> {
-  const r = await fetch(`${BASE}/benchmark/demo`);
-  if (!r.ok) throw new Error(`benchmark/demo failed: ${r.status}`);
+export async function runEngine(
+  enableLlm = true,
+  model = "claude-haiku-4-5",
+): Promise<RunResponse> {
+  const url = `${BASE}/api/run?enable_llm=${enableLlm}&model=${encodeURIComponent(model)}`;
+  const r = await fetch(url, { method: "POST" });
+  if (!r.ok) throw new Error(`run failed: ${r.status}`);
   return await r.json();
 }
 
-export async function uploadCsvs(
-  tu: File,
-  tr: File,
-  rs: File
-): Promise<Finding[]> {
-  const fd = new FormData();
-  fd.append("tu", tu);
-  fd.append("tr", tr);
-  fd.append("rs", rs);
-  const r = await fetch(`${BASE}/run`, { method: "POST", body: fd });
-  if (!r.ok) throw new Error(`run failed: ${r.status}`);
-  return (await r.json()).findings;
+export async function fetchCsv(name: string): Promise<string> {
+  const r = await fetch(`${BASE}/api/data/${name}`);
+  if (!r.ok) throw new Error(`data ${name} failed: ${r.status}`);
+  return await r.text();
+}
+
+export async function translateFinding(
+  finding: Partial<Finding>,
+  enableLlm = true,
+): Promise<Finding> {
+  const url = `${BASE}/api/translate?enable_llm=${enableLlm}`;
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(finding),
+  });
+  if (!r.ok) throw new Error(`translate failed: ${r.status}`);
+  return await r.json();
+}
+
+export function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+  if (lines.length === 0) return [];
+  const headers = splitCsvLine(lines[0]);
+  return lines.slice(1).map((line) => {
+    const cells = splitCsvLine(line);
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => (row[h] = cells[i] ?? ""));
+    return row;
+  });
+}
+
+function splitCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQ) {
+      if (c === '"' && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else if (c === '"') inQ = false;
+      else cur += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === ",") {
+        out.push(cur);
+        cur = "";
+      } else cur += c;
+    }
+  }
+  out.push(cur);
+  return out;
 }
