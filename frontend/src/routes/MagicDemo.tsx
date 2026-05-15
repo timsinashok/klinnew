@@ -249,6 +249,22 @@ export function MagicDemo() {
     )[0];
   }, [visitFindings]);
 
+  // Map of visit -> highest open severity for this subject (used by trajectory + RunBar hint).
+  const findingsByVisit = useMemo(() => {
+    const m = new Map<string, Finding["severity"]>();
+    for (const f of subjectFindings) {
+      const v = f.visit || "";
+      const prev = m.get(v);
+      if (
+        !prev ||
+        SEV_RANK[f.severity as keyof typeof SEV_RANK] >
+          SEV_RANK[prev as keyof typeof SEV_RANK]
+      )
+        m.set(v, f.severity);
+    }
+    return m;
+  }, [subjectFindings]);
+
   // Sum of target diameters at the current visit.
   const targetSum = useMemo(() => {
     return lesions
@@ -346,6 +362,7 @@ export function MagicDemo() {
           visit={visit}
           visitDate={responseRow.date || lesions[0]?.measurements[visit] ? "" : ""}
           completedVisits={completedVisits}
+          findingsByVisit={findingsByVisit}
           onSubject={(s) => setParams({ subject: s })}
           onVisit={(v) => setParams({ subject, visit: v })}
         />
@@ -464,6 +481,7 @@ function PatientHeader({
   subject,
   visit,
   completedVisits,
+  findingsByVisit,
   onSubject,
   onVisit,
 }: {
@@ -471,6 +489,7 @@ function PatientHeader({
   visit: Visit;
   visitDate: string;
   completedVisits: Visit[];
+  findingsByVisit: Map<string, Finding["severity"]>;
   onSubject: (s: string) => void;
   onVisit: (v: Visit) => void;
 }) {
@@ -501,7 +520,12 @@ function PatientHeader({
             options={VISITS.filter((v) => completedVisits.includes(v as Visit))}
           />
         </div>
-        <Trajectory current={visit} completed={completedVisits} />
+        <Trajectory
+          current={visit}
+          completed={completedVisits}
+          findingsByVisit={findingsByVisit}
+          onJump={(v) => onVisit(v)}
+        />
       </div>
     </div>
   );
@@ -554,40 +578,68 @@ function PickerSelect({
 function Trajectory({
   current,
   completed,
+  findingsByVisit,
+  onJump,
 }: {
   current: Visit;
   completed: Visit[];
+  findingsByVisit: Map<string, Finding["severity"]>;
+  onJump: (v: Visit) => void;
 }) {
+  const sevDotClass = (s: Finding["severity"] | undefined) => {
+    if (s === "Critical") return "bg-sev-critical-600";
+    if (s === "Warning") return "bg-sev-warning-600";
+    if (s === "Suggested Change") return "bg-sev-suggested-600";
+    return "";
+  };
+
   return (
     <div className="ml-auto pb-1">
       <div className="kicker mb-2">Visit history</div>
-      <ol className="flex items-center gap-2.5">
+      <ol className="flex items-end gap-3">
         {VISITS.map((v) => {
           const isCur = v === current;
           const isDone = completed.includes(v as Visit) && !isCur;
+          const sev = findingsByVisit.get(v);
+          const clickable = isCur || isDone;
           return (
             <li key={v} className="flex flex-col items-center">
-              <div
-                className={`w-2.5 h-2.5 rounded-full ${
-                  isCur
-                    ? "bg-accent-600 ring-2 ring-accent-200"
-                    : isDone
-                      ? "bg-slate-700"
-                      : "bg-stone-300"
-                }`}
-                title={v}
-              />
-              <span
-                className={`text-[10px] mt-1 mono ${
-                  isCur
-                    ? "text-accent-700 font-semibold"
-                    : isDone
-                      ? "text-slate-700"
-                      : "text-slate-400"
-                }`}
+              <button
+                disabled={!clickable}
+                onClick={() => clickable && onJump(v as Visit)}
+                className="flex flex-col items-center gap-1 disabled:cursor-default"
+                title={
+                  sev
+                    ? `${v} — open ${sev}`
+                    : v
+                }
               >
-                {v.replace("Week ", "W")}
-              </span>
+                <div
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    isCur
+                      ? "bg-accent-600 ring-2 ring-accent-200"
+                      : isDone
+                        ? "bg-slate-700"
+                        : "bg-stone-300"
+                  }`}
+                />
+                <span
+                  className={`text-[10px] mono ${
+                    isCur
+                      ? "text-accent-700 font-semibold"
+                      : isDone
+                        ? "text-slate-700"
+                        : "text-slate-400"
+                  }`}
+                >
+                  {v.replace("Week ", "W")}
+                </span>
+                <span
+                  className={`block w-1.5 h-1.5 rounded-full ${
+                    sev ? sevDotClass(sev) : "bg-transparent"
+                  }`}
+                />
+              </button>
             </li>
           );
         })}
