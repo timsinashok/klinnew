@@ -166,6 +166,17 @@ export function MagicDemo() {
     load();
   }, [load]);
 
+  // Auto-run the consistency check on mount so the page is never empty.
+  useEffect(() => {
+    if (allFindings !== null) return;
+    runEngine(true)
+      .then((r) => {
+        setAllFindings(r.findings);
+        setIssueState("open");
+      })
+      .catch((e) => setErr(String(e)));
+  }, [allFindings]);
+
   // Determine visits this subject has actually recorded data for.
   const completedVisits = useMemo<Visit[]>(() => {
     const set = new Set<string>();
@@ -177,12 +188,33 @@ export function MagicDemo() {
     return VISITS.filter((v) => set.has(v));
   }, [lesions, responses]);
 
-  // Resolve the active visit, defaulting to latest completed.
+  // Findings for this subject — needed to pick a sensible default visit.
+  const subjectFindings = useMemo(
+    () =>
+      (allFindings ?? []).filter((f) => f.subject_id === subject),
+    [allFindings, subject],
+  );
+
+  // Resolve the active visit. Precedence:
+  //   1) the explicit URL param if it names a completed visit
+  //   2) the visit holding the subject's highest-severity finding
+  //   3) the latest completed visit
   const visit: Visit = useMemo(() => {
-    if (visitParam && (VISITS as readonly string[]).includes(visitParam))
+    if (
+      visitParam &&
+      (VISITS as readonly string[]).includes(visitParam) &&
+      completedVisits.includes(visitParam as Visit)
+    )
       return visitParam as Visit;
+    if (subjectFindings.length > 0) {
+      const sorted = [...subjectFindings].sort(
+        (a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity],
+      );
+      const v = (sorted[0].visit || "") as Visit;
+      if (completedVisits.includes(v)) return v;
+    }
     return (completedVisits[completedVisits.length - 1] ?? "Week 16") as Visit;
-  }, [visitParam, completedVisits]);
+  }, [visitParam, completedVisits, subjectFindings]);
 
   // Reset issue state when subject/visit changes.
   useEffect(() => {
@@ -330,6 +362,10 @@ export function MagicDemo() {
             running={running}
             findingCount={visitFindings.length}
             onRun={runCheck}
+            otherVisits={otherVisitsWithFindings(subjectFindings, visit)}
+            onJumpToVisit={(v) =>
+              setParams({ subject, visit: v as string })
+            }
           />
 
           {loading ? (
@@ -449,37 +485,68 @@ function PatientHeader({
         </Link>
         <div>
           <div className="kicker mb-1">Subject</div>
-          <select
+          <PickerSelect
             value={subject}
-            onChange={(e) => onSubject(e.target.value)}
-            className="mono text-lg font-semibold text-slate-900 leading-none bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer pr-1"
-            style={{ appearance: "none" }}
-          >
-            {SUBJECTS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+            onChange={onSubject}
+            options={SUBJECTS}
+            mono
+            big
+          />
         </div>
         <div className="border-l border-stone-200 pl-6">
           <div className="kicker mb-1">Visit</div>
-          <select
+          <PickerSelect
             value={visit}
-            onChange={(e) => onVisit(e.target.value as Visit)}
-            className="text-sm font-medium text-slate-900 bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer pr-1"
-          >
-            {VISITS.filter((v) => completedVisits.includes(v as Visit)).map(
-              (v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ),
-            )}
-          </select>
+            onChange={(v) => onVisit(v as Visit)}
+            options={VISITS.filter((v) => completedVisits.includes(v as Visit))}
+          />
         </div>
         <Trajectory current={visit} completed={completedVisits} />
       </div>
+    </div>
+  );
+}
+
+function PickerSelect({
+  value,
+  onChange,
+  options,
+  mono,
+  big,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+  mono?: boolean;
+  big?: boolean;
+}) {
+  return (
+    <div className="relative inline-block">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`appearance-none cursor-pointer bg-stone-50 border border-stone-200 rounded px-3 pr-7 py-1.5 hover:border-stone-300 hover:bg-white focus:outline-none focus:border-accent-500 focus:bg-white transition ${
+          big ? "text-lg font-semibold" : "text-sm font-medium"
+        } ${mono ? "mono" : ""} text-slate-900`}
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+      <svg
+        viewBox="0 0 10 10"
+        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-slate-500"
+      >
+        <path
+          d="M2 4l3 3 3-3"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+      </svg>
     </div>
   );
 }
@@ -536,12 +603,17 @@ function RunBar({
   running,
   findingCount,
   onRun,
+  otherVisits,
+  onJumpToVisit,
 }: {
   ran: boolean;
   running: boolean;
   findingCount: number;
   onRun: () => void;
+  otherVisits: { visit: string; severity: Finding["severity"] }[];
+  onJumpToVisit: (v: string) => void;
 }) {
+  const cleanHere = ran && findingCount === 0;
   return (
     <div
       className={`panel p-3 flex items-center gap-3 ${
@@ -558,15 +630,57 @@ function RunBar({
               : "Consistency check complete. No findings for this visit."
             : "Ready to submit? Run a consistency check first."}
         </div>
-        <div className="text-2xs text-slate-500 mt-0.5">
-          Checks this visit's data against prior visits and RECIST 1.1 rules.
-        </div>
+        {cleanHere && otherVisits.length > 0 ? (
+          <div className="text-2xs text-slate-500 mt-1">
+            Open findings on prior visits:&nbsp;
+            {otherVisits.map((v, i) => (
+              <span key={v.visit}>
+                {i > 0 && <span className="text-slate-300"> · </span>}
+                <button
+                  onClick={() => onJumpToVisit(v.visit)}
+                  className="mono text-accent-700 hover:text-accent-800 underline-offset-2 hover:underline"
+                >
+                  {v.visit}
+                </button>
+                <span className="text-slate-400 mono ml-1">
+                  ({v.severity[0]})
+                </span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="text-2xs text-slate-500 mt-0.5">
+            Checks this visit's data against prior visits and RECIST 1.1 rules.
+          </div>
+        )}
       </div>
       <button className="btn btn-primary" onClick={onRun} disabled={running}>
         {running ? "Running…" : ran ? "Re-check" : "Run consistency check"}
       </button>
     </div>
   );
+}
+
+function otherVisitsWithFindings(
+  subjectFindings: Finding[],
+  currentVisit: string,
+): { visit: string; severity: Finding["severity"] }[] {
+  const map = new Map<string, Finding["severity"]>();
+  for (const f of subjectFindings) {
+    const v = f.visit || "";
+    if (v === currentVisit) continue;
+    const prev = map.get(v);
+    if (
+      !prev ||
+      SEV_RANK[f.severity as keyof typeof SEV_RANK] >
+        SEV_RANK[prev as keyof typeof SEV_RANK]
+    )
+      map.set(v, f.severity);
+  }
+  return Array.from(map.entries()).map(([visit, severity]) => ({
+    visit,
+    severity,
+  }));
 }
 
 function SkeletonTwo() {
