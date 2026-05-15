@@ -1,34 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchCsv, parseCsv, runEngine } from "../api";
 import { ChartTemplate } from "../components/ChartTemplate";
-import { EvidenceTable } from "../components/EvidenceTable";
-import { SeverityBadge, SeverityChip } from "../components/SeverityBadge";
-import { SkeletonGrid } from "../components/Skeleton";
-import { Tooltip } from "../components/Tooltip";
-import {
-  clearSubject,
-  editKey,
-  loadSubject,
-  saveSubject,
-  type Persisted,
-} from "../lib/persistence";
-import type { Finding, Severity } from "../types";
-import { SEV_FIELD_CLASS, SEV_RANK } from "../ui/tokens";
+import type { Finding } from "../types";
 
 const SUBJECT = "SUBJ001";
-type TabId = "baseline" | "followup" | "disease";
+const VISIT = "Week 16";
+const VISIT_DATE = "2026-04-25";
 
-const TABS: { id: TabId; label: string; form: string }[] = [
-  { id: "baseline", label: "Baseline Tumor Assessment", form: "Baseline Tumor Assessment" },
-  { id: "followup", label: "Follow-up Tumor Assessment", form: "Follow-up Tumor Assessment" },
-  {
-    id: "disease",
-    label: "Disease Response",
-    form: "Disease Response / RECIST Assessment",
-  },
-];
-
-const VISIT_ORDER = [
+const VISITS = [
   "Baseline",
   "Week 8",
   "Week 16",
@@ -38,278 +17,118 @@ const VISIT_ORDER = [
   "Week 48",
 ] as const;
 
-type ColType = "text" | "number" | "date" | "select";
-interface Col {
-  key: string;
-  label: string;
-  type: ColType;
-  options?: string[];
-  w?: string;
-  mono?: boolean;
+interface ResponseForm {
+  target: string;
+  nontarget: string;
+  newlesions: string;
+  overall: string;
 }
 
-const BASELINE_COLS: Col[] = [
-  { key: "lesion_number", label: "Lesion", type: "text", w: "w-20", mono: true },
-  {
-    key: "lesion_category",
-    label: "Category",
-    type: "select",
-    w: "w-32",
-    options: ["TARGET", "NON-TARGET"],
-  },
-  {
-    key: "lesion_site_raw",
-    label: "Site",
-    type: "select",
-    w: "w-40",
-    options: [
-      "LUNG",
-      "LIVER",
-      "LYMPH NODE",
-      "ADRENAL GLAND",
-      "BONE",
-      "PERITONEUM",
-      "PLEURA",
-      "BRAIN",
-      "OTHER",
-    ],
-  },
-  { key: "lesion_location_detail", label: "Detail", type: "text", w: "w-44" },
-  { key: "measurement_value", label: "mm", type: "number", w: "w-20" },
-  {
-    key: "measurement_unit_raw",
-    label: "Unit",
-    type: "select",
-    w: "w-16",
-    options: ["mm", "cm"],
-  },
-  {
-    key: "lesion_status",
-    label: "Status",
-    type: "select",
-    w: "w-28",
-    options: ["PRESENT", "ABSENT", "EQUIVOCAL"],
-  },
-  {
-    key: "assessment_method_raw",
-    label: "Method",
-    type: "select",
-    w: "w-40",
-    options: ["CT SCAN", "MRI", "PET", "computed tomography"],
-  },
-];
-const FOLLOWUP_COLS: Col[] = [
-  { key: "lesion_number", label: "Lesion", type: "text", w: "w-20", mono: true },
-  {
-    key: "lesion_category",
-    label: "Category",
-    type: "select",
-    w: "w-32",
-    options: ["TARGET", "NON-TARGET", "NEW"],
-  },
-  { key: "measurement_value", label: "mm", type: "number", w: "w-20" },
-  {
-    key: "measurement_unit_raw",
-    label: "Unit",
-    type: "select",
-    w: "w-16",
-    options: ["mm", "cm"],
-  },
-  {
-    key: "lesion_status",
-    label: "Status",
-    type: "select",
-    w: "w-28",
-    options: ["PRESENT", "ABSENT", "EQUIVOCAL"],
-  },
-  {
-    key: "assessment_method_raw",
-    label: "Method",
-    type: "select",
-    w: "w-32",
-    options: ["CT SCAN", "MRI", "PET", "computed tomography"],
-  },
-  { key: "assessment_date", label: "Date", type: "date", w: "w-36" },
-  {
-    key: "new_lesions_present",
-    label: "New?",
-    type: "select",
-    w: "w-20",
-    options: ["No", "Yes"],
-  },
-];
-const DISEASE_COLS: Col[] = [
-  {
-    key: "response_assessment_date",
-    label: "Date",
-    type: "date",
-    w: "w-36",
-  },
-  {
-    key: "target_lesion_response_raw",
-    label: "Target response",
-    type: "select",
-    w: "w-44",
-    options: ["CR", "PR", "SD", "PD", "NE", "Partial Response"],
-  },
-  {
-    key: "non_target_lesion_response_raw",
-    label: "Non-target response",
-    type: "select",
-    w: "w-44",
-    options: ["CR", "NON-CR/NON-PD", "PD", "NE"],
-  },
-  {
-    key: "new_lesion_response_raw",
-    label: "New lesion response",
-    type: "select",
-    w: "w-44",
-    options: ["NO NEW LESIONS", "NEW LESIONS PRESENT"],
-  },
-  {
-    key: "overall_response_raw",
-    label: "Overall response",
-    type: "select",
-    w: "w-44",
-    options: ["CR", "PR", "SD", "PD", "NE", "Partial Response"],
-  },
-];
-
-const RULE_TO_FIELDS: Record<string, string[]> = {
-  "TR-RS-001": ["target_lesion_response_raw", "overall_response_raw"],
-  "TR-RS-003": ["overall_response_raw", "non_target_lesion_response_raw"],
-  "TU/TR-RS-002": ["new_lesions_present", "overall_response_raw"],
-  "TU-002": ["lesion_site_raw", "lesion_number"],
-  "TU-TR-001": ["lesion_number"],
-  "TR-003": ["assessment_method_raw"],
-  "TR-001": ["measurement_value"],
-  "TU-001": ["lesion_number"],
-  "LARGE_DROP": ["measurement_value"],
-  "VISIT_WINDOW": ["assessment_date", "response_assessment_date"],
-};
-
-function fieldsForRule(f: Finding): string[] {
-  if (f.rule_id === "TR-002") return [f.lineage.field];
-  return RULE_TO_FIELDS[f.rule_id] || [f.lineage.field];
+interface PriorMeasure {
+  baseline?: string;
+  week8?: string;
 }
 
-function findingKey(f: Finding): string {
-  return `${f.rule_id}|${f.subject_id}|${f.visit ?? ""}|${f.lineage.field}`;
+interface LesionRow {
+  id: string;
+  category: "TARGET" | "NON-TARGET";
+  description: string;
+  prior: PriorMeasure;
+  week16: string;
+  unit: string;
+  status: string;
 }
 
-function isResolvedByEdit(
-  f: Finding,
-  edits: Record<string, string>,
-): boolean {
-  if (f.rule_id !== "TR-002") return false;
-  const canonical = (f.template_params as { canonical?: string }).canonical;
-  if (!canonical) return false;
-  const v = edits[editKey(f.visit, f.lineage.field)];
-  return v != null && v.trim() === canonical.trim();
-}
+type IssueState = "pristine" | "open" | "resolved" | "flagged";
 
 // ---------------------------------------------------------------------------
 
 export function MagicDemo() {
-  const [tab, setTab] = useState<TabId>("disease");
-  const [baseline, setBaseline] = useState<Record<string, string>[]>([]);
-  const [followup, setFollowup] = useState<Record<string, string>[]>([]);
-  const [disease, setDisease] = useState<Record<string, string>[]>([]);
-  const [findings, setFindings] = useState<Finding[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [lesions, setLesions] = useState<LesionRow[]>([]);
+  const [response, setResponse] = useState<ResponseForm>({
+    target: "",
+    nontarget: "",
+    newlesions: "",
+    overall: "",
+  });
+  const [responseDate, setResponseDate] = useState<string>("");
+  const [issueState, setIssueState] = useState<IssueState>("pristine");
   const [running, setRunning] = useState(false);
+  const [flagRationale, setFlagRationale] = useState("");
+  const [trajectoryOpen, setTrajectoryOpen] = useState(false);
+  const [finding, setFinding] = useState<Finding | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
-  const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
-  const [resolved, setResolved] = useState<Set<string>>(new Set());
-  const [edits, setEdits] = useState<Record<string, string>>({});
-  const [showSubmit, setShowSubmit] = useState(false);
-  const lastTriggerRef = useRef<HTMLElement | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async (fresh = false) => {
-    setLoading(true);
-    setFindings(null);
-    setShowSubmit(false);
-    try {
-      const [eb, ef, ed] = await Promise.all([
-        fetchCsv("ecrf_baseline.csv").then(parseCsv),
-        fetchCsv("ecrf_followup.csv").then(parseCsv),
-        fetchCsv("ecrf_disease_response.csv").then(parseCsv),
-      ]);
-      let ebRows = eb.filter((r) => r.subject_id === SUBJECT);
-      let efRows = ef.filter((r) => r.subject_id === SUBJECT);
-      let edRows = ed.filter((r) => r.subject_id === SUBJECT);
+  useEffect(() => {
+    (async () => {
+      try {
+        const ef = await fetchCsv("ecrf_followup.csv").then(parseCsv);
+        const ed = await fetchCsv("ecrf_disease_response.csv").then(parseCsv);
+        const subjFollowup = ef.filter((r) => r.subject_id === SUBJECT);
+        const lesionIds = Array.from(
+          new Set(subjFollowup.map((r) => r.lesion_number)),
+        );
+        const next: LesionRow[] = lesionIds.map((id) => {
+          const w16 = subjFollowup.find(
+            (r) => r.lesion_number === id && r.visit === VISIT,
+          );
+          const w8 = subjFollowup.find(
+            (r) => r.lesion_number === id && r.visit === "Week 8",
+          );
+          return {
+            id,
+            category: (w16?.lesion_category as "TARGET" | "NON-TARGET") ||
+              (w8?.lesion_category as "TARGET" | "NON-TARGET") ||
+              "TARGET",
+            description: w16?.lesion_description || w8?.lesion_description || "",
+            prior: {
+              baseline: baselineFor(id),
+              week8: w8?.measurement_value || undefined,
+            },
+            week16: w16?.measurement_value || "",
+            unit: w16?.measurement_unit_raw || "mm",
+            status: w16?.lesion_status || "PRESENT",
+          };
+        });
+        setLesions(next);
 
-      const persisted: Persisted = fresh
-        ? { edits: {}, acknowledged: [], resolved: [] }
-        : loadSubject(SUBJECT);
-      ebRows = applyEdits(ebRows, persisted.edits);
-      efRows = applyEdits(efRows, persisted.edits);
-      edRows = applyEdits(edRows, persisted.edits);
-      setBaseline(ebRows);
-      setFollowup(efRows);
-      setDisease(edRows);
-      setEdits(persisted.edits);
-      setAcknowledged(new Set(persisted.acknowledged));
-      setResolved(new Set(persisted.resolved));
-      setErr(null);
-    } catch (e) {
-      setErr(String(e));
-    } finally {
-      setLoading(false);
-    }
+        const dr = ed.find(
+          (r) => r.subject_id === SUBJECT && r.visit === VISIT,
+        );
+        if (dr) {
+          setResponse({
+            target: dr.target_lesion_response_raw || "",
+            nontarget: dr.non_target_lesion_response_raw || "",
+            newlesions: dr.new_lesion_response_raw || "",
+            overall: dr.overall_response_raw || "",
+          });
+          setResponseDate(dr.response_assessment_date || VISIT_DATE);
+        }
+      } catch (e) {
+        setErr(String(e));
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // Persist on every state change.
-  useEffect(() => {
-    saveSubject(SUBJECT, {
-      edits,
-      acknowledged: Array.from(acknowledged),
-      resolved: Array.from(resolved),
-    });
-  }, [edits, acknowledged, resolved]);
-
-  // Auto-resolve when an edit matches the canonical value for a TR-002 finding.
-  useEffect(() => {
-    if (!findings) return;
-    setResolved((prev) => {
-      const next = new Set(prev);
-      for (const f of findings) {
-        if (isResolvedByEdit(f, edits)) next.add(findingKey(f));
-      }
-      return next;
-    });
-  }, [edits, findings]);
-
-  const subjectFindings = useMemo(() => {
-    if (!findings) return [];
-    return findings
-      .filter((f) => f.subject_id === SUBJECT)
-      .filter((f) => !resolved.has(findingKey(f)));
-  }, [findings, resolved]);
-
-  const counts: Record<Severity, number> = {
-    Critical: subjectFindings.filter((f) => f.severity === "Critical").length,
-    Warning: subjectFindings.filter((f) => f.severity === "Warning").length,
-    "Suggested Change": subjectFindings.filter(
-      (f) => f.severity === "Suggested Change",
-    ).length,
-  };
-
-  const unresolvedCritical = subjectFindings.filter(
-    (f) => f.severity === "Critical" && !acknowledged.has(findingKey(f)),
-  ).length;
-
-  const runChecks = async () => {
+  const runCheck = async () => {
     setRunning(true);
-    lastTriggerRef.current = document.activeElement as HTMLElement | null;
     try {
       const r = await runEngine(true);
-      setFindings(r.findings);
+      const f = r.findings.find(
+        (x) =>
+          x.subject_id === SUBJECT &&
+          x.visit === VISIT &&
+          x.rule_id === "TR-RS-001",
+      );
+      setFinding(f || null);
+      if (response.target.toUpperCase().includes("PARTIAL") || response.target === "PR") {
+        setIssueState("open");
+      } else {
+        setIssueState("resolved");
+      }
       setErr(null);
     } catch (e) {
       setErr(String(e));
@@ -318,653 +137,735 @@ export function MagicDemo() {
     }
   };
 
-  const writeField = (
-    form: TabId,
-    visit: string,
-    lesionNumber: string | null,
-    field: string,
-    value: string,
-  ) => {
-    const setter =
-      form === "baseline"
-        ? setBaseline
-        : form === "followup"
-          ? setFollowup
-          : setDisease;
-    setter((rows) =>
-      rows.map((r) => {
-        if (r.visit !== visit) return r;
-        if (lesionNumber && r.lesion_number !== lesionNumber) return r;
-        return { ...r, [field]: value };
-      }),
+  const updateW16Measurement = (id: string, value: string) => {
+    setLesions((rows) =>
+      rows.map((r) => (r.id === id ? { ...r, week16: value } : r)),
     );
-    setEdits((prev) => ({ ...prev, [editKey(visit, field)]: value }));
+    if (issueState === "resolved" || issueState === "flagged") {
+      setIssueState("open");
+    }
   };
 
-  const autoFix = (f: Finding) => {
-    const canonical = (f.template_params as { canonical?: string }).canonical;
-    if (!canonical) return;
-    const form: TabId = f.lineage.form.startsWith("Baseline")
-      ? "baseline"
-      : f.lineage.form.startsWith("Follow-up")
-        ? "followup"
-        : "disease";
-    writeField(form, f.visit || "", null, f.lineage.field, canonical);
-    setResolved((p) => new Set(p).add(findingKey(f)));
-    closeDrawer();
+  const updateResponse = (key: keyof ResponseForm, value: string) => {
+    setResponse((p) => ({ ...p, [key]: value }));
+    if (key === "target" || key === "overall") {
+      const newTarget = key === "target" ? value : response.target;
+      const newOverall = key === "overall" ? value : response.overall;
+      const stillPR =
+        looksPR(newTarget) || looksPR(newOverall);
+      setIssueState(stillPR ? "open" : "resolved");
+    }
   };
 
-  const openDrawer = (f: Finding, trigger?: HTMLElement | null) => {
-    lastTriggerRef.current = trigger || null;
-    setSelectedFinding(f);
-  };
-  const closeDrawer = () => {
-    setSelectedFinding(null);
-    setTimeout(() => lastTriggerRef.current?.focus(), 0);
+  const changeToSD = () => {
+    setResponse((p) => ({
+      ...p,
+      target: "Stable Disease",
+      overall: "Stable Disease",
+    }));
+    setIssueState("resolved");
   };
 
-  const reset = async () => {
-    clearSubject(SUBJECT);
-    await load(true);
+  const flagForReview = (rationale: string) => {
+    setFlagRationale(rationale);
+    setIssueState("flagged");
   };
+
+  const targetSum = useMemo(() => {
+    return lesions
+      .filter((l) => l.category === "TARGET")
+      .reduce((acc, l) => acc + (parseFloat(l.week16) || 0), 0);
+  }, [lesions]);
+
+  const baselineSum = useMemo(() => {
+    return lesions
+      .filter((l) => l.category === "TARGET")
+      .reduce((acc, l) => acc + (parseFloat(l.prior.baseline || "") || 0), 0);
+  }, [lesions]);
+
+  const pctChange =
+    baselineSum > 0 ? ((targetSum - baselineSum) / baselineSum) * 100 : 0;
+
+  const submitBlocked = issueState === "open" || issueState === "pristine";
 
   return (
     <div className="flex flex-col h-full">
-      <SubHeader
-        tab={tab}
-        onTab={setTab}
-        running={running}
-        onRun={runChecks}
-        onReset={reset}
-        onSubmit={() => setShowSubmit(true)}
-        hasFindings={findings !== null}
-        unresolvedCritical={unresolvedCritical}
-        counts={counts}
-        editCount={Object.keys(edits).length}
-      />
+      <EdcChrome />
 
-      <div className="flex-1 overflow-y-auto px-6 pb-8 pt-4">
-        {err && (
-          <div className="mb-4 text-sm text-sev-critical-800 bg-sev-critical-50 border border-sev-critical-300 rounded p-2">
-            {err}
-          </div>
-        )}
-        {loading && (
-          <div className="space-y-3">
-            <div className="text-2xs text-slate-500">Loading SUBJ001…</div>
-            <SkeletonGrid cols={8} rows={5} />
-          </div>
-        )}
-        {!loading && tab === "baseline" && (
-          <FormTable
-            heading="Baseline Tumor Assessment"
-            subheading={`Subject ${SUBJECT} · ${baseline[0]?.assessment_date || ""}`}
-            cols={BASELINE_COLS}
-            rows={baseline}
-            findings={subjectFindings.filter((f) =>
-              f.lineage.form.startsWith("Baseline"),
-            )}
-            edits={edits}
-            visit={(r) => r.visit || ""}
-            onEdit={(r, col, v) =>
-              writeField("baseline", r.visit, r.lesion_number, col.key, v)
-            }
-            onSelect={openDrawer}
-          />
-        )}
-        {!loading && tab === "followup" && (
-          <VisitGroupedTable
-            cols={FOLLOWUP_COLS}
-            rows={followup}
-            findings={subjectFindings.filter((f) =>
-              f.lineage.form.startsWith("Follow-up"),
-            )}
-            edits={edits}
-            onEdit={(r, col, v) =>
-              writeField("followup", r.visit, r.lesion_number, col.key, v)
-            }
-            onSelect={openDrawer}
-          />
-        )}
-        {!loading && tab === "disease" && (
-          <VisitGroupedTable
-            cols={DISEASE_COLS}
-            rows={disease}
-            findings={subjectFindings.filter((f) =>
-              f.lineage.form.startsWith("Disease"),
-            )}
-            edits={edits}
-            singleRowPerVisit
-            onEdit={(r, col, v) =>
-              writeField("disease", r.visit, null, col.key, v)
-            }
-            onSelect={openDrawer}
-          />
-        )}
-      </div>
+      <div className="flex-1 overflow-y-auto">
+        <PatientHeader />
 
-      {selectedFinding && (
-        <Drawer
-          finding={selectedFinding}
-          onClose={closeDrawer}
-          onAcknowledge={() => {
-            setAcknowledged((p) =>
-              new Set(p).add(findingKey(selectedFinding)),
-            );
-            closeDrawer();
-          }}
-          onAutoFix={() => autoFix(selectedFinding)}
-          onResolve={() => {
-            setResolved((p) => new Set(p).add(findingKey(selectedFinding)));
-            closeDrawer();
-          }}
-          acknowledged={acknowledged.has(findingKey(selectedFinding))}
-        />
-      )}
-
-      {showSubmit && (
-        <SubmitModal
-          counts={counts}
-          editCount={Object.keys(edits).length}
-          acknowledgedCount={acknowledged.size}
-          resolvedCount={resolved.size}
-          onClose={() => setShowSubmit(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-function SubHeader({
-  tab,
-  onTab,
-  running,
-  onRun,
-  onReset,
-  onSubmit,
-  hasFindings,
-  unresolvedCritical,
-  counts,
-  editCount,
-}: {
-  tab: TabId;
-  onTab: (t: TabId) => void;
-  running: boolean;
-  onRun: () => void;
-  onReset: () => void;
-  onSubmit: () => void;
-  hasFindings: boolean;
-  unresolvedCritical: number;
-  counts: Record<Severity, number>;
-  editCount: number;
-}) {
-  const submitBlocked = unresolvedCritical > 0 || !hasFindings;
-  return (
-    <div className="border-b border-slate-200 bg-white">
-      <div className="flex items-center px-6 h-12 gap-4">
-        <div className="text-sm font-semibold">Magic Demo</div>
-        <span className="text-2xs text-slate-500 mono">
-          SUBJ001 · KLIN-ONC-DEMO-001
-        </span>
-        <div className="ml-auto flex items-center gap-3">
-          {hasFindings && (
-            <div className="hidden md:flex items-center gap-1.5 text-2xs text-slate-500 mr-2">
-              <Counter
-                label="C"
-                count={counts.Critical}
-                tone="critical"
-              />
-              <Counter label="W" count={counts.Warning} tone="warning" />
-              <Counter
-                label="S"
-                count={counts["Suggested Change"]}
-                tone="suggested"
-              />
-              {editCount > 0 && (
-                <span className="ml-2 text-2xs text-accent-700 bg-accent-50 border border-accent-200 px-1.5 py-0.5 rounded mono">
-                  {editCount} edits
-                </span>
-              )}
+        <div className="max-w-5xl mx-auto px-8 py-6 space-y-8">
+          {err && (
+            <div className="text-sm text-sev-critical-800 bg-sev-critical-50 border border-sev-critical-300 rounded p-3">
+              {err}
             </div>
           )}
-          <Tooltip text="Translations are generated by Claude Haiku 4.5 with a deterministic fallback. The deterministic engine is unaffected." />
-          <button className="btn" onClick={onReset}>
-            Reset
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={onRun}
-            disabled={running}
-          >
-            {running ? "Running…" : "Run consistency check"}
-          </button>
-          <button
-            className={`btn ${submitBlocked ? "" : "btn-primary"}`}
-            disabled={submitBlocked}
-            onClick={onSubmit}
-            title={
-              unresolvedCritical
-                ? `${unresolvedCritical} critical finding(s) must be acknowledged or resolved.`
-                : ""
-            }
-          >
-            Submit
-          </button>
+
+          <RunBar
+            ran={issueState !== "pristine"}
+            running={running}
+            onRun={runCheck}
+          />
+
+          {loading ? (
+            <div className="space-y-3">
+              <div className="h-32 bg-slate-100 rounded animate-pulse" />
+              <div className="h-32 bg-slate-100 rounded animate-pulse" />
+            </div>
+          ) : (
+            <>
+              <TumorAssessment
+                lesions={lesions}
+                onUpdate={updateW16Measurement}
+                onUpdateStatus={(id, status) =>
+                  setLesions((rs) =>
+                    rs.map((r) => (r.id === id ? { ...r, status } : r)),
+                  )
+                }
+                targetSum={targetSum}
+                baselineSum={baselineSum}
+                pctChange={pctChange}
+              />
+
+              <DiseaseResponse
+                response={response}
+                date={responseDate}
+                onChange={updateResponse}
+                onDateChange={setResponseDate}
+                issueState={issueState}
+              />
+
+              {issueState === "open" && finding && (
+                <IssueCallout
+                  finding={finding}
+                  targetSum={targetSum}
+                  baselineSum={baselineSum}
+                  pctChange={pctChange}
+                  onChangeToSd={changeToSD}
+                  onFlag={() => {
+                    const rationale = prompt(
+                      "Add a brief rationale for flagging this for investigator review:",
+                      "",
+                    );
+                    if (rationale != null) flagForReview(rationale);
+                  }}
+                  onViewTrajectory={() => setTrajectoryOpen(true)}
+                />
+              )}
+              {issueState === "flagged" && (
+                <FlaggedCallout rationale={flagRationale} />
+              )}
+              {issueState === "resolved" && finding && (
+                <ResolvedCallout />
+              )}
+            </>
+          )}
         </div>
       </div>
-      <div className="flex gap-0 px-6">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => onTab(t.id)}
-            className={`text-sm px-3 py-2 -mb-px border-b-2 ${
-              t.id === tab
-                ? "border-accent-700 text-accent-700 font-medium"
-                : "border-transparent text-slate-500 hover:text-slate-900"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
-function Counter({
-  label,
-  count,
-  tone,
-}: {
-  label: string;
-  count: number;
-  tone: "critical" | "warning" | "suggested";
-}) {
-  const cls = {
-    critical:
-      "bg-sev-critical-50 text-sev-critical-700 border-sev-critical-300",
-    warning: "bg-sev-warning-50 text-sev-warning-700 border-sev-warning-300",
-    suggested:
-      "bg-sev-suggested-50 text-sev-suggested-700 border-sev-suggested-300",
-  }[tone];
-  return (
-    <span
-      className={`inline-flex items-center gap-1 text-2xs mono px-1.5 py-0.5 rounded border ${cls}`}
-    >
-      <span className="font-semibold">{label}</span>
-      {count}
-    </span>
+      <SubmitFooter
+        blocked={submitBlocked}
+        state={issueState}
+        onReset={() => window.location.reload()}
+      />
+
+      {trajectoryOpen && finding && (
+        <TrajectoryDrawer
+          finding={finding}
+          onClose={() => setTrajectoryOpen(false)}
+        />
+      )}
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-function VisitGroupedTable({
-  cols,
-  rows,
-  findings,
-  edits,
-  singleRowPerVisit,
-  onEdit,
-  onSelect,
-}: {
-  cols: Col[];
-  rows: Record<string, string>[];
-  findings: Finding[];
-  edits: Record<string, string>;
-  singleRowPerVisit?: boolean;
-  onEdit: (r: Record<string, string>, col: Col, v: string) => void;
-  onSelect: (f: Finding, trigger?: HTMLElement | null) => void;
-}) {
-  const byVisit = new Map<string, Record<string, string>[]>();
-  for (const r of rows) {
-    const v = r.visit || "(unknown)";
-    if (!byVisit.has(v)) byVisit.set(v, []);
-    byVisit.get(v)!.push(r);
-  }
-  const visits = Array.from(byVisit.keys()).sort(
-    (a, b) =>
-      (VISIT_ORDER.indexOf(a as (typeof VISIT_ORDER)[number]) + 1 || 99) -
-      (VISIT_ORDER.indexOf(b as (typeof VISIT_ORDER)[number]) + 1 || 99),
-  );
-
+function EdcChrome() {
   return (
-    <div className="space-y-5">
-      {visits.map((v) => {
-        const visitRows = byVisit.get(v)!;
-        const visitFindings = findings.filter((f) => (f.visit || "") === v);
-        const flagged = visitFindings.length > 0;
-        return (
-          <FormTable
-            key={v}
-            heading={v}
-            subheading={`${visitRows[0]?.assessment_date || visitRows[0]?.response_assessment_date || ""} · ${visitRows[0]?.assessment_method_raw || ""}`}
-            cols={cols}
-            rows={singleRowPerVisit ? visitRows.slice(0, 1) : visitRows}
-            findings={visitFindings}
-            edits={edits}
-            visit={() => v}
-            onEdit={onEdit}
-            onSelect={onSelect}
-            flagged={flagged}
-          />
-        );
-      })}
+    <div className="bg-slate-900 text-slate-100 text-2xs px-6 h-8 flex items-center gap-4 shrink-0">
+      <span className="font-semibold tracking-wide">SponsorCloud EDC</span>
+      <span className="text-slate-400">/</span>
+      <span>KLIN-ONC-DEMO-001 · Phase II Solid Tumour</span>
+      <span className="text-slate-400">/</span>
+      <span>Site 042 · Memorial Cancer Center</span>
+      <span className="ml-auto mono text-slate-300">
+        Coord. A. Patel · CRC
+      </span>
     </div>
   );
 }
 
-function FormTable({
-  heading,
-  subheading,
-  cols,
-  rows,
-  findings,
-  edits,
-  visit,
-  onEdit,
-  onSelect,
-  flagged,
+function PatientHeader() {
+  return (
+    <div className="bg-white border-b border-slate-200">
+      <div className="max-w-5xl mx-auto px-8 py-5 flex items-end gap-6">
+        <div>
+          <div className="text-2xs uppercase tracking-wider text-slate-500 font-medium">
+            Subject
+          </div>
+          <div className="mono text-lg font-semibold text-slate-900 leading-none mt-1">
+            {SUBJECT}
+          </div>
+          <div className="text-2xs text-slate-500 mt-1">
+            Female · 64 · enrolled 2026-01-03
+          </div>
+        </div>
+        <div className="border-l border-slate-200 pl-6">
+          <div className="text-2xs uppercase tracking-wider text-slate-500 font-medium">
+            Visit
+          </div>
+          <div className="text-sm font-medium text-slate-900 mt-1">
+            {VISIT}
+          </div>
+          <div className="text-2xs text-slate-500 mt-0.5 mono">
+            {VISIT_DATE}
+          </div>
+        </div>
+        <Trajectory />
+      </div>
+    </div>
+  );
+}
+
+function Trajectory() {
+  return (
+    <div className="ml-auto pb-1">
+      <div className="text-2xs uppercase tracking-wider text-slate-500 font-medium mb-2">
+        Visit history
+      </div>
+      <ol className="flex items-center gap-2.5">
+        {VISITS.map((v) => {
+          const idx = VISITS.indexOf(v);
+          const cur = idx === 2;
+          const done = idx < 2;
+          return (
+            <li key={v} className="flex flex-col items-center">
+              <div
+                className={`w-2.5 h-2.5 rounded-full ${
+                  cur
+                    ? "bg-accent-700 ring-2 ring-accent-200"
+                    : done
+                      ? "bg-slate-700"
+                      : "bg-slate-300"
+                }`}
+                title={v}
+              />
+              <span
+                className={`text-[10px] mt-1 mono ${
+                  cur
+                    ? "text-accent-700 font-semibold"
+                    : done
+                      ? "text-slate-700"
+                      : "text-slate-400"
+                }`}
+              >
+                {v.replace("Week ", "W")}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function RunBar({
+  ran,
+  running,
+  onRun,
 }: {
-  heading: string;
-  subheading?: string;
-  cols: Col[];
-  rows: Record<string, string>[];
-  findings: Finding[];
-  edits: Record<string, string>;
-  visit: (r: Record<string, string>) => string;
-  onEdit: (r: Record<string, string>, col: Col, v: string) => void;
-  onSelect: (f: Finding, trigger?: HTMLElement | null) => void;
-  flagged?: boolean;
+  ran: boolean;
+  running: boolean;
+  onRun: () => void;
+}) {
+  return (
+    <div
+      className={`panel p-3 flex items-center gap-3 ${
+        ran ? "" : "border-accent-300 bg-accent-50"
+      }`}
+    >
+      <div className="flex-1">
+        <div className="text-sm text-slate-900">
+          {ran
+            ? "Consistency check complete."
+            : "Ready to submit? Run a consistency check first."}
+        </div>
+        <div className="text-2xs text-slate-500 mt-0.5">
+          Checks this visit's data against prior visits and RECIST 1.1 rules.
+        </div>
+      </div>
+      <button
+        className="btn btn-primary"
+        onClick={onRun}
+        disabled={running}
+      >
+        {running ? "Running…" : ran ? "Re-check" : "Run consistency check"}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function TumorAssessment({
+  lesions,
+  onUpdate,
+  onUpdateStatus,
+  targetSum,
+  baselineSum,
+  pctChange,
+}: {
+  lesions: LesionRow[];
+  onUpdate: (id: string, v: string) => void;
+  onUpdateStatus: (id: string, status: string) => void;
+  targetSum: number;
+  baselineSum: number;
+  pctChange: number;
 }) {
   return (
     <section>
-      <div className="flex items-baseline gap-3 mb-2">
-        <h2 className="text-sm font-semibold">{heading}</h2>
-        {subheading && (
-          <span className="text-2xs text-slate-500 mono">{subheading}</span>
-        )}
-        {flagged && (
-          <span className="ml-auto text-2xs text-sev-critical-700">
-            {findings.length} finding{findings.length === 1 ? "" : "s"}
-          </span>
-        )}
-      </div>
-      <div className="panel overflow-x-auto">
+      <SectionHead
+        title="Tumor Assessment"
+        subtitle="Record this visit's lesion measurements. Prior visits shown for context."
+      />
+      <div className="panel overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50">
-              {cols.map((c) => (
-                <th
-                  key={c.key}
-                  className={`text-left px-3 py-1.5 font-medium kicker ${c.w || ""}`}
-                >
-                  {c.label}
-                </th>
-              ))}
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="text-left px-4 py-2 text-2xs font-medium text-slate-500 uppercase tracking-wider">
+                Lesion
+              </th>
+              <th className="text-left px-4 py-2 text-2xs font-medium text-slate-500 uppercase tracking-wider">
+                Description
+              </th>
+              <th className="text-right px-4 py-2 text-2xs font-medium text-slate-500 uppercase tracking-wider">
+                Baseline
+              </th>
+              <th className="text-right px-4 py-2 text-2xs font-medium text-slate-500 uppercase tracking-wider">
+                Week 8
+              </th>
+              <th className="text-right px-4 py-2 text-2xs font-medium text-accent-700 uppercase tracking-wider bg-accent-50">
+                Week 16
+              </th>
+              <th className="text-left px-4 py-2 text-2xs font-medium text-slate-500 uppercase tracking-wider">
+                Status
+              </th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
-              const v = visit(r);
-              return (
-                <tr
-                  key={`${v}|${r.lesion_number || ""}|${r.response_assessment_date || ""}`}
-                  className="border-b border-slate-100 last:border-b-0 align-top"
-                >
-                  {cols.map((c) => {
-                    const cellFindings = findings.filter((f) => {
-                      if ((f.visit || "") !== v) return false;
-                      const lf = (
-                        f.template_params as { lesion_id?: string }
-                      ).lesion_id;
-                      if (lf && r.lesion_number && lf !== r.lesion_number)
-                        return false;
-                      return fieldsForRule(f).includes(c.key);
-                    });
-                    const topSev = topSeverity(cellFindings);
-                    const isEdited =
-                      edits[editKey(v, c.key)] !== undefined;
-                    return (
-                      <td key={c.key} className="px-3 py-2">
-                        <Field
-                          col={c}
-                          value={r[c.key] ?? ""}
-                          edited={isEdited}
-                          severity={topSev}
-                          onChange={(val) => onEdit(r, c, val)}
-                        />
-                        {cellFindings.length > 0 && (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {cellFindings.map((f, i) => (
-                              <button
-                                key={i}
-                                onClick={(e) =>
-                                  onSelect(f, e.currentTarget)
-                                }
-                                className="inline-flex items-center gap-1 text-2xs hover:opacity-80"
-                                title={f.user_message}
-                              >
-                                <SeverityChip severity={f.severity} />
-                                <span className="mono text-slate-500">
-                                  {f.rule_id}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
+            {lesions.map((l) => (
+              <tr
+                key={l.id}
+                className="border-b border-slate-100 last:border-b-0"
+              >
+                <td className="px-4 py-2 mono text-sm font-medium">
+                  {l.id}
+                  <span
+                    className={`ml-2 text-[10px] px-1 py-0 rounded ${
+                      l.category === "TARGET"
+                        ? "bg-slate-100 text-slate-600"
+                        : "bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {l.category === "TARGET" ? "T" : "NT"}
+                  </span>
+                </td>
+                <td className="px-4 py-2 text-sm text-slate-600">
+                  {l.description}
+                </td>
+                <td className="px-4 py-2 text-right mono text-sm text-slate-400">
+                  {l.prior.baseline ? `${l.prior.baseline} mm` : "—"}
+                </td>
+                <td className="px-4 py-2 text-right mono text-sm text-slate-400">
+                  {l.prior.week8 ? `${l.prior.week8} mm` : "—"}
+                </td>
+                <td className="px-4 py-2 bg-accent-50/50">
+                  {l.category === "TARGET" ? (
+                    <div className="flex items-center gap-1 justify-end">
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={l.week16}
+                        onChange={(e) => onUpdate(l.id, e.target.value)}
+                        className="field text-right w-20"
+                      />
+                      <span className="mono text-2xs text-slate-500">mm</span>
+                    </div>
+                  ) : (
+                    <div className="text-right mono text-2xs text-slate-400">
+                      —
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  <select
+                    className="field w-32"
+                    value={l.status}
+                    onChange={(e) => onUpdateStatus(l.id, e.target.value)}
+                  >
+                    {["PRESENT", "ABSENT", "EQUIVOCAL"].map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 flex items-baseline justify-between">
+          <div className="text-2xs uppercase tracking-wider text-slate-500 font-medium">
+            Sum of target diameters
+          </div>
+          <div className="flex items-baseline gap-3">
+            <span className="mono text-sm font-semibold">
+              {targetSum.toFixed(1)} mm
+            </span>
+            <span className="text-2xs text-slate-500">
+              baseline {baselineSum.toFixed(1)} mm
+            </span>
+            <span
+              className={`text-2xs mono font-medium ${
+                pctChange < -30
+                  ? "text-emerald-700"
+                  : pctChange > 20
+                    ? "text-sev-critical-700"
+                    : "text-slate-500"
+              }`}
+            >
+              {pctChange >= 0 ? "+" : ""}
+              {pctChange.toFixed(1)}%
+            </span>
+          </div>
+        </div>
       </div>
     </section>
   );
 }
 
-function topSeverity(fs: Finding[]): Severity | null {
-  if (fs.length === 0) return null;
-  return [...fs].sort(
-    (a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity],
-  )[0].severity;
+// ---------------------------------------------------------------------------
+
+function DiseaseResponse({
+  response,
+  date,
+  onChange,
+  onDateChange,
+  issueState,
+}: {
+  response: ResponseForm;
+  date: string;
+  onChange: (k: keyof ResponseForm, v: string) => void;
+  onDateChange: (v: string) => void;
+  issueState: IssueState;
+}) {
+  const targetIsPR = looksPR(response.target);
+  const overallIsPR = looksPR(response.overall);
+  const targetFlagged =
+    (issueState === "open" || issueState === "pristine") && targetIsPR;
+  const overallFlagged =
+    (issueState === "open" || issueState === "pristine") && overallIsPR;
+
+  return (
+    <section>
+      <SectionHead
+        title="Disease Response"
+        subtitle="Investigator's RECIST 1.1 response judgment for this visit."
+      />
+      <div className="panel p-5">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+          <ResponseField
+            label="Target response"
+            value={response.target}
+            options={[
+              "Complete Response",
+              "Partial Response",
+              "Stable Disease",
+              "Progressive Disease",
+              "Not evaluable",
+            ]}
+            onChange={(v) => onChange("target", v)}
+            flagged={targetFlagged}
+          />
+          <ResponseField
+            label="Non-target response"
+            value={response.nontarget}
+            options={[
+              "Complete Response",
+              "NON-CR/NON-PD",
+              "Progressive Disease",
+              "Not evaluable",
+            ]}
+            onChange={(v) => onChange("nontarget", v)}
+          />
+          <ResponseField
+            label="New lesions"
+            value={response.newlesions}
+            options={["NO NEW LESIONS", "NEW LESIONS PRESENT"]}
+            onChange={(v) => onChange("newlesions", v)}
+          />
+          <ResponseField
+            label="Overall response"
+            value={response.overall}
+            options={[
+              "Complete Response",
+              "Partial Response",
+              "Stable Disease",
+              "Progressive Disease",
+              "Not evaluable",
+            ]}
+            onChange={(v) => onChange("overall", v)}
+            flagged={overallFlagged}
+          />
+          <div className="col-span-2 flex items-center gap-3 pt-3 border-t border-slate-100">
+            <label className="text-2xs text-slate-500">
+              Response assessment date
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => onDateChange(e.target.value)}
+              className="field w-40"
+            />
+            <span className="text-2xs text-slate-400 ml-auto mono">
+              RECIST 1.1 · Investigator-derived
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
-function Field({
-  col,
+function ResponseField({
+  label,
   value,
-  edited,
-  severity,
+  options,
   onChange,
+  flagged,
 }: {
-  col: Col;
+  label: string;
   value: string;
-  edited: boolean;
-  severity: Severity | null;
+  options: string[];
   onChange: (v: string) => void;
+  flagged?: boolean;
 }) {
-  const classes = [
-    "field",
-    col.mono ? "" : "font-sans",
-    edited ? "is-edited" : "",
-    severity ? SEV_FIELD_CLASS[severity] : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  if (col.type === "select" && col.options) {
-    const options = col.options.includes(value) || !value
-      ? col.options
-      : [...col.options, value];
-    return (
+  const all = options.includes(value) || !value ? options : [...options, value];
+  return (
+    <label className="block">
+      <div className="flex items-center gap-1.5 text-2xs text-slate-600 mb-1">
+        <span className="font-medium">{label}</span>
+        {flagged && (
+          <span
+            aria-label="critical"
+            className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-sev-critical-600 text-white text-[9px] font-bold"
+          >
+            !
+          </span>
+        )}
+      </div>
       <select
-        className={classes}
+        className={`field w-full h-9 text-sm ${
+          flagged ? "is-flagged-critical border-sev-critical-500 bg-sev-critical-50" : ""
+        }`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
-        {options.map((o) => (
+        <option value=""></option>
+        {all.map((o) => (
           <option key={o} value={o}>
             {o}
           </option>
         ))}
       </select>
-    );
-  }
-  return (
-    <input
-      type={col.type}
-      className={classes}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    </label>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-function Drawer({
+function IssueCallout({
+  finding,
+  targetSum,
+  baselineSum,
+  pctChange,
+  onChangeToSd,
+  onFlag,
+  onViewTrajectory,
+}: {
+  finding: Finding;
+  targetSum: number;
+  baselineSum: number;
+  pctChange: number;
+  onChangeToSd: () => void;
+  onFlag: () => void;
+  onViewTrajectory: () => void;
+}) {
+  return (
+    <div className="border-l-[3px] border-sev-critical-600 bg-sev-critical-50/60 px-5 py-4">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-2xs font-semibold tracking-wider px-1.5 py-0.5 bg-sev-critical-600 text-white">
+          Critical
+        </span>
+        <span className="mono text-2xs text-sev-critical-700">
+          {finding.rule_id}
+        </span>
+        <span className="ml-auto text-2xs text-slate-500 mono">
+          {finding.translator_source === "llm" ? "ai" : "fallback"}
+        </span>
+      </div>
+      <div className="text-sm font-medium text-slate-900 mb-1.5">
+        Target response is not supported by the measurements at this visit.
+      </div>
+      <div className="text-sm text-slate-700 leading-snug max-w-2xl">
+        Target response is recorded as{" "}
+        <span className="mono">Partial Response</span>, but the sum of target
+        diameters has decreased from{" "}
+        <span className="mono">{baselineSum.toFixed(1)} mm</span> at baseline to{" "}
+        <span className="mono">{targetSum.toFixed(1)} mm</span> at{" "}
+        <span className="mono">Week 16</span> ({" "}
+        <span className="mono font-medium">{Math.abs(pctChange).toFixed(1)}%</span>{" "}
+        decrease). RECIST 1.1 requires at least a 30 % decrease from baseline
+        to call PR; this visit is closer to Stable Disease.
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button className="btn btn-primary" onClick={onChangeToSd}>
+          Change to Stable Disease
+        </button>
+        <button className="btn" onClick={onFlag}>
+          Flag for investigator
+        </button>
+        <button className="btn" onClick={onViewTrajectory}>
+          View trajectory
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ResolvedCallout() {
+  return (
+    <div className="border-l-[3px] border-emerald-600 bg-emerald-50/60 px-5 py-3 flex items-start gap-3">
+      <span className="text-2xs font-semibold tracking-wider px-1.5 py-0.5 bg-emerald-600 text-white">
+        Resolved
+      </span>
+      <div className="text-sm text-slate-800">
+        The previously-flagged inconsistency has been resolved by your edit.
+      </div>
+    </div>
+  );
+}
+
+function FlaggedCallout({ rationale }: { rationale: string }) {
+  return (
+    <div className="border-l-[3px] border-sev-warning-600 bg-sev-warning-50/60 px-5 py-3">
+      <div className="flex items-center gap-2">
+        <span className="text-2xs font-semibold tracking-wider px-1.5 py-0.5 bg-sev-warning-600 text-white">
+          Flagged for investigator review
+        </span>
+        <span className="text-2xs text-slate-500">
+          Submission allowed; the data manager will review.
+        </span>
+      </div>
+      {rationale && (
+        <div className="text-sm text-slate-700 mt-2 max-w-2xl leading-snug">
+          <span className="text-2xs text-slate-500 uppercase tracking-wider mr-2">
+            Rationale
+          </span>
+          {rationale}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function SubmitFooter({
+  blocked,
+  state,
+  onReset,
+}: {
+  blocked: boolean;
+  state: IssueState;
+  onReset: () => void;
+}) {
+  return (
+    <footer className="border-t border-slate-200 bg-white px-6 py-3 flex items-center gap-3 shrink-0">
+      <div className="text-2xs text-slate-500">
+        {state === "pristine" && "Run a consistency check before submitting."}
+        {state === "open" && (
+          <span className="text-sev-critical-700">
+            1 critical issue must be resolved before submission.
+          </span>
+        )}
+        {state === "resolved" &&
+          "All issues resolved. This visit is ready to submit."}
+        {state === "flagged" &&
+          "1 issue flagged for review. Submission allowed with rationale."}
+      </div>
+      <button className="btn ml-auto" onClick={onReset}>
+        Reset
+      </button>
+      <button
+        className={`btn ${blocked ? "" : "btn-primary"}`}
+        disabled={blocked}
+      >
+        Submit visit
+      </button>
+    </footer>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function TrajectoryDrawer({
   finding,
   onClose,
-  onAcknowledge,
-  onAutoFix,
-  onResolve,
-  acknowledged,
 }: {
   finding: Finding;
   onClose: () => void;
-  onAcknowledge: () => void;
-  onAutoFix: () => void;
-  onResolve: () => void;
-  acknowledged: boolean;
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
-    // Move focus into the drawer.
-    const first = ref.current?.querySelector<HTMLElement>(
-      "button, [href], input, select, textarea",
-    );
-    first?.focus();
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const sev = finding.severity;
   return (
     <aside
-      ref={ref}
       role="dialog"
       aria-modal="true"
-      aria-label={`${sev} finding ${finding.rule_id}`}
-      className="fixed top-11 right-0 bottom-0 w-[480px] border-l border-slate-200 bg-white shadow-xl z-40 flex flex-col"
+      className="fixed top-11 right-0 bottom-0 w-[560px] border-l border-slate-200 bg-white shadow-xl z-40 flex flex-col"
     >
       <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-200">
-        <SeverityBadge severity={sev} />
-        <span className="mono text-2xs text-slate-500">
-          {finding.rule_id}
-        </span>
+        <div className="text-sm font-semibold">
+          Target sum trajectory · {SUBJECT}
+        </div>
         <button
           onClick={onClose}
           aria-label="Close"
-          className="ml-auto text-slate-400 hover:text-slate-900 text-sm w-6 h-6 inline-flex items-center justify-center rounded hover:bg-slate-100"
+          className="ml-auto text-slate-400 hover:text-slate-900 w-6 h-6 inline-flex items-center justify-center rounded hover:bg-slate-100"
         >
           ✕
         </button>
       </div>
-
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        <div>
-          <div className="text-sm font-medium">
-            <span className="mono">{finding.subject_id}</span>
-            {finding.visit && (
-              <span className="mono text-slate-500"> · {finding.visit}</span>
-            )}
-          </div>
-          <div className="text-2xs text-slate-500 mt-0.5">
-            <span className="kicker">eCRF</span>{" "}
-            <span className="mono text-slate-700">
-              {finding.lineage.form}
-            </span>{" "}
-            ·{" "}
-            <span className="mono text-slate-700">
-              {finding.lineage.field}
-            </span>{" "}
-            ·{" "}
-            <span className="mono text-slate-500">
-              {finding.lineage.source_doc}
-            </span>
-          </div>
+        <div className="text-sm text-slate-600 leading-snug">
+          Sum of target lesion diameters across visits, with the RECIST 1.1
+          Partial Response threshold drawn at 70 % of baseline. PR is supported
+          when the line dips below that threshold.
         </div>
-
-        <div className="text-sm text-slate-800 leading-snug">
-          {finding.user_message}
+        <ChartTemplate finding={finding} />
+        <div className="text-2xs text-slate-500 border-t border-slate-200 pt-3">
+          <span className="kicker">Citation</span> {finding.citation}
         </div>
-
-        {finding.suggested_actions.length > 0 && (
-          <div>
-            <div className="kicker mb-1.5">Suggested actions</div>
-            <ul className="text-sm text-slate-700 space-y-1 list-disc list-inside">
-              {finding.suggested_actions.map((a, i) => (
-                <li key={i}>{a}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {finding.template_id === "RESPONSE_THRESHOLD" && (
-          <ChartTemplate finding={finding} />
-        )}
-
-        {Object.entries(finding.evidence_rows).map(([d, rows]) => (
-          <EvidenceTable key={d} title={d} rows={rows} compact />
-        ))}
-
-        {finding.citation && (
-          <div className="text-2xs italic text-slate-500 border-t border-slate-200 pt-3">
-            {finding.citation}
-          </div>
-        )}
-      </div>
-
-      <div className="border-t border-slate-200 px-5 py-3 flex flex-wrap gap-2 bg-slate-50">
-        {sev === "Suggested Change" && (
-          <button className="btn btn-primary" onClick={onAutoFix}>
-            Auto-fix and resolve
-          </button>
-        )}
-        {sev === "Warning" && (
-          <button
-            className="btn btn-primary"
-            disabled={acknowledged}
-            onClick={onAcknowledge}
-          >
-            {acknowledged ? "Acknowledged" : "Acknowledge"}
-          </button>
-        )}
-        {sev === "Critical" && (
-          <>
-            <button
-              className="btn btn-danger"
-              disabled={acknowledged}
-              onClick={onAcknowledge}
-            >
-              {acknowledged ? "Flagged" : "Flag for investigator"}
-            </button>
-            <button className="btn" onClick={onResolve}>
-              Mark resolved
-            </button>
-          </>
-        )}
-        <button className="btn ml-auto" onClick={onClose}>
-          Close
-        </button>
       </div>
     </aside>
   );
@@ -972,72 +873,28 @@ function Drawer({
 
 // ---------------------------------------------------------------------------
 
-function SubmitModal({
-  counts,
-  editCount,
-  acknowledgedCount,
-  resolvedCount,
-  onClose,
+function SectionHead({
+  title,
+  subtitle,
 }: {
-  counts: Record<Severity, number>;
-  editCount: number;
-  acknowledgedCount: number;
-  resolvedCount: number;
-  onClose: () => void;
+  title: string;
+  subtitle: string;
 }) {
   return (
-    <div className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center">
-      <div className="panel max-w-md w-full p-5 space-y-3">
-        <div className="text-sm font-semibold">Submit visit data</div>
-        <div className="text-sm text-slate-600">
-          Review the changes before submission. In production this would post
-          to the EDC.
-        </div>
-        <dl className="text-sm space-y-1 mono">
-          <Row k="Edits applied" v={editCount} />
-          <Row k="Findings resolved" v={resolvedCount} />
-          <Row k="Findings acknowledged" v={acknowledgedCount} />
-          <Row k="Open Critical" v={counts.Critical} />
-          <Row k="Open Warning" v={counts.Warning} />
-          <Row k="Open Suggested" v={counts["Suggested Change"]} />
-        </dl>
-        <div className="flex justify-end gap-2 pt-2">
-          <button className="btn" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn btn-primary" onClick={onClose}>
-            Confirm submit
-          </button>
-        </div>
-      </div>
+    <div className="mb-3">
+      <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+      <div className="text-2xs text-slate-500 mt-0.5">{subtitle}</div>
     </div>
   );
 }
 
-function Row({ k, v }: { k: string; v: number }) {
-  return (
-    <div className="flex justify-between">
-      <dt className="text-slate-500">{k}</dt>
-      <dd>{v}</dd>
-    </div>
-  );
+function looksPR(s: string): boolean {
+  const v = (s || "").trim().toUpperCase();
+  return v === "PR" || v === "PARTIAL RESPONSE";
 }
 
-// ---------------------------------------------------------------------------
-
-function applyEdits(
-  rows: Record<string, string>[],
-  edits: Record<string, string>,
-): Record<string, string>[] {
-  if (!edits || Object.keys(edits).length === 0) return rows;
-  return rows.map((r) => {
-    const v = r.visit || "";
-    const next: Record<string, string> = { ...r };
-    for (const [k, val] of Object.entries(edits)) {
-      const [evisit, field] = k.split("|");
-      if (evisit !== v) continue;
-      if (field in next) next[field] = val;
-    }
-    return next;
-  });
+function baselineFor(lesionId: string): string | undefined {
+  // Hardcoded from data/ecrf_baseline.csv for SUBJ001 — keeps the demo
+  // self-contained without an extra fetch.
+  return { T01: "35.0", T02: "28.0" }[lesionId];
 }

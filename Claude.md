@@ -14,11 +14,13 @@ The product wedge: existing validators (Pinnacle21 et al.) speak SDTM and live a
 
 ## 2. Two demos to build
 
-**Demo 1 — "The magic demo" (the headline).** A coordinator-facing eCRF entry experience. The user sees a realistic eCRF with multiple tabs (Baseline / Follow-up / Disease Response), fills in a patient's visit, hits Submit (or "Run consistency check"), and sees errors flagged inline with plain-English messages and one-click actions. Built for emotional impact in a sales meeting.
+**Demo 1 — Magic eCRF entry (the headline).** A single-visit entry experience. The coordinator opens SUBJ001's Week 16 visit. The form is pre-populated with this visit's data (already entered). Prior visits (Baseline, Week 8) appear as compact context — a horizontal trajectory strip up top, plus prior-visit columns in the lesion measurement table (read-only, muted). The coordinator hits "Run consistency check" (or it auto-runs). Critical issues appear inline: red border on the offending field, red callout immediately below the section explaining the issue in plain English with one-click actions. The Submit button is gated until critical issues are resolved or flagged.
 
-**Demo 2 — "Data in action" (the technical proof).** Shows the full pipeline as a sequence: eCRF input → mapping → SDTM → checks → translated findings. Each stage is visualizable, with the lineage thread visible throughout. Built for a CTO or technical buyer who needs to understand what's happening under the hood.
+NOT a multi-tab "fill the whole eCRF" experience. NOT a webpage with tables. The aesthetic is professional medical software — clean white surfaces, sentence case throughout, monospace for data values, severity colors used only meaningfully. Reference points: Veeva CDMS, modern healthcare SaaS.
 
-Both demos use the same engine. Both use the same synthetic dataset (`/data`). Build the engine once; render it two ways.
+**Demo 2 — Pipeline ("data in action").** A 3-panel walkthrough using SUBJ001 Week 16 as the focused example. Panel 1: eCRF data (the relevant rows as clean tables). Panel 2: conversion to SDTM with lineage arrows visibly connecting eCRF columns to SDTM rows — this is the hero panel. Panel 3: consistency check — 2–3 findings appear with severity badges; click one to see the drill-down with chart and translated message.
+
+Both demos use the same engine, same data, same Finding object. Build the engine once; render it two ways. Skip standardization as a separate visible stage (fold into conversion). Skip ingest as a separate stage (eCRF data just exists). Use all 3 SDTM domains (TU, TR, RS) — they're needed for the cross-domain findings.
 
 ## 3. Pipeline architecture
 
@@ -278,46 +280,57 @@ Output JSON with keys: user_message, suggested_actions (array of strings).
 - FindingCard renders with mock data
 - ChartTemplate renders the SUBJ001 PR-threshold scenario (baseline 63mm, Week 16 56.5mm, threshold line at 44mm) correctly
 
-### Stage 6 — Demo 2: Pipeline ("data in action") (~90 min)
+### Stage 6 — Demo 2: Pipeline (~90 min) — REVISED
 
-**Goal:** Walk through the 5 stages of the pipeline with real data. Each stage clickable, lineage thread visible.
+**Goal:** 3-panel walkthrough of one patient (SUBJ001 Week 16) showing eCRF → SDTM → findings, with visible lineage.
 
 **Build `routes/PipelineDemo.tsx`:**
-- Multi-step layout: 5 panels horizontally (Stages 1-5) or vertical stepper
-- Stage 1 (Ingest): show `ecrf_baseline.csv` and `ecrf_followup.csv` for SUBJ001 in a readable table
-- Stage 2 (Map): show side-by-side: eCRF row on left, the SDTM TU+TR rows it produced on right, with arrows/highlights showing the mapping. Pick 1-2 hero rows.
-- Stage 3 (Normalize): show a before/after for the standardization examples: `"computed tomography"` → `"CT SCAN"`, `"Partial Response"` → `"PR"`
-- Stage 4 (Check): show the engine running (visually: animated checks list ticking through), then the resulting findings count
-- Stage 5 (Translate): show one finding raw (technical SDTM-language version) vs translated (user_message), demonstrating the LLM rendering
-- Lineage indicator: persistent breadcrumb at top showing the subject/visit being followed
+
+- Three large panels stacked vertically. Each has a clear title in 16px / 500 and a "next" affordance.
+- **Panel 1 — "eCRF data"**: pull rows from `ecrf_followup.csv` and `ecrf_disease_response.csv` for SUBJ001 Week 16. Render as clean tables with sentence-case headers (`Lesion`, `Location`, `Diameter`, `Method`, `Response`). Monospace for data values. ~6–8 rows total — not a wall.
+- **Panel 2 — "Conversion to SDTM"** (the hero): pick 2 eCRF rows (one measurement row, one response row). Show each on the left, with arrows connecting to the TU/TR/RS rows it produces on the right. Visually highlight the `source_ecrf_form` and `source_field` lineage columns on the SDTM side — that's the visible architectural insight.
+- **Panel 3 — "Consistency check"**: animated tick-in of 2–3 findings. Each has severity badge + 1-line message. Click the PR-threshold finding → drill-down with the chart-with-threshold visualization (same component as Magic Demo) and the LLM-translated message.
+- Persistent breadcrumb at top: `SUBJ001 / Week 16 / 2026-04-25`.
+- Do NOT show standardization as a separate panel; mention it briefly inside Panel 2.
+- Do NOT show ingestion at all.
 
 **Acceptance:**
-- Demo walkable end-to-end in <90 seconds for a viewer
-- Each stage shows actual data from the API, not mocked
-- The same subject (SUBJ001) is traced through all 5 stages
+- Walkable end-to-end in <60 seconds.
+- Lineage arrows visible and labelled in Panel 2.
+- All data from `/data` CSVs, not mocked.
+- Single subject throughout.
 
-### Stage 7 — Demo 1: Magic eCRF demo (~120 min)
+### Stage 7 — Demo 1: Magic eCRF entry (~150 min) — REVISED
 
-**Goal:** The headline experience. Coordinator fills eCRF, hits validation, sees inline errors with actions.
+**Goal:** A realistic single-visit eCRF entry experience with inline error flagging that catches the inconsistency between this visit's entered data and the patient's prior visits.
 
-**Build `routes/MagicDemo.tsx`:**
-- Three tabs: "Baseline" / "Follow-up" / "Disease Response"
-- Pre-fill SUBJ001's complete data across all visits (this is the data that contains 2-3 seeded issues for this subject — PR threshold fail at Week 16, plus auto-fixable standardization issues)
-- Field-level eCRF form UI: dropdowns for codes, inputs for measurements, date pickers
-- Top-right "Run consistency check" button (or auto-run on tab switch)
-- After check runs:
-  - Inline indicators next to fields with issues (yellow exclamation for Warning, red for Critical, blue for Suggested Change)
-  - Click an indicator → drawer/modal with the FindingCard, evidence, ChartTemplate (for response-math findings), and action buttons
-  - Actions per severity: Critical → "Flag for investigator review" / "Edit field". Warning → "Acknowledge". Suggested Change → "Auto-fix" (one-click apply)
-- Submit button: gated by Critical findings (must be flagged or resolved)
-- Right rail summary: count of findings by severity
+**Scenario:**
+- The coordinator opens SUBJ001's Week 16 visit. Two form sections: Tumor Assessment, Disease Response.
+- The form is pre-filled with the data in `ecrf_followup.csv` and `ecrf_disease_response.csv` for SUBJ001 Week 16 — including the seeded TR-RS-001 issue (Target response = Partial Response, but math doesn't support it).
+- The coordinator hits "Run consistency check" (or it auto-runs on page load for demo purposes).
+- A critical issue appears inline: red border on the Target Response dropdown, red callout below the Disease Response section with plain-English message and 3 action buttons.
+
+**Visual aesthetic (this is what the engineer build missed):**
+- Faux EDC chrome strip at the top (study name + coordinator name).
+- Patient context strip: subject ID prominent (`SUBJ001` in 18px monospace), visit name, date, and a compact horizontal visit trajectory showing Baseline → Week 8 → Week 16 (current, highlighted in indigo) → Week 24 (future, muted).
+- **Tumor Assessment section**: table with columns for Baseline, Week 8, Week 16. Prior columns read-only and muted. Week 16 column has inputs. Auto-computed "Sum of target diameters: 56.5 mm (baseline 63)" below the table.
+- **Disease Response section**: 4 dropdowns in a 2-column grid (Target / Non-target / New lesions / Overall). Target Response dropdown has a red border and a red alert icon beside it. Overall Response also bordered red because it inherits the conflict.
+- **Inline issue callout** below Disease Response: red-tinted background, 3 px red border-left, no border-radius on the callout. "Critical" badge in sentence case (NOT "CRITICAL"), rule ID monospaced, 13 px / 500 title, 13 px message body with specific numbers monospaced inline. 3 action buttons: "Change to SD" / "Flag for investigator" / "View trajectory".
+- **Footer**: "1 critical issue must be resolved before submission". Submit button visually disabled.
+- Severity badge colours: Critical = red (background Red 50, text Red 800, badge accent Red 600). Warning = amber. Suggested Change = blue.
+- Clinical aesthetic: white surfaces, 0.5 px borders, sentence case, monospace for all data values (lesion IDs, measurements, codes, dates), generous whitespace.
+- NOT a webpage with tables. NOT a generic dashboard. Reference: medical SaaS UI.
+
+**Actions:**
+- "View trajectory" opens a drawer with the `ChartTemplate` showing sum-of-diameters across all visits with the 30 % threshold line drawn in (same component as Pipeline Panel 3).
+- "Change to SD" updates Target Response and Overall Response to "Stable Disease" and the issue callout shows resolved state.
+- "Flag for investigator" turns the callout amber and shows "Flagged for investigator review" with a textarea for rationale; the Submit button becomes enabled with a note that flagged issues will be reviewed.
 
 **Acceptance:**
-- Loading SUBJ001 Week 16 Disease Response tab and hitting "Run consistency check" produces:
-  1. A red indicator next to the `target_response` field (PR threshold)
-  2. A blue indicator on at least one field in Baseline (standardization)
-- Clicking the red indicator opens the drilldown showing the chart, the evidence rows, and the translated message
-- Clicking "Auto-fix" on the blue indicator updates the form field value
+- Loading the page shows the Week 16 form pre-filled, the inline issue visible after a single click on Run.
+- "View trajectory" opens the chart drilldown.
+- "Change to SD" updates the dropdowns and clears the issue.
+- "Submit visit" is disabled until the critical issue is resolved or flagged.
 
 ### Stage 8 — Polish (~60 min)
 
