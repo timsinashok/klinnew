@@ -52,7 +52,11 @@ interface ResponseRecord {
   date: string;
 }
 
-type IssueState = "pristine" | "open" | "resolved" | "flagged";
+type Disposition = "resolved" | "flagged" | "acknowledged";
+
+function findingKey(f: Finding): string {
+  return `${f.rule_id}|${f.subject_id}|${f.visit ?? ""}|${f.lineage.field}`;
+}
 
 // ---------------------------------------------------------------------------
 
@@ -67,8 +71,12 @@ export function MagicDemo() {
   const [running, setRunning] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [issueState, setIssueState] = useState<IssueState>("pristine");
-  const [flagRationale, setFlagRationale] = useState("");
+  const [dispositions, setDispositions] = useState<
+    Map<string, Disposition>
+  >(new Map());
+  const [flagRationale, setFlagRationale] = useState<Record<string, string>>(
+    {},
+  );
   const [chartFinding, setChartFinding] = useState<Finding | null>(null);
   const [allFindingsOpen, setAllFindingsOpen] = useState(false);
   const lastSubjectVisit = useRef<string>("");
@@ -172,7 +180,6 @@ export function MagicDemo() {
     runEngine(true)
       .then((r) => {
         setAllFindings(r.findings);
-        setIssueState("open");
       })
       .catch((e) => setErr(String(e)));
   }, [allFindings]);
@@ -216,13 +223,11 @@ export function MagicDemo() {
     return (completedVisits[completedVisits.length - 1] ?? "Week 16") as Visit;
   }, [visitParam, completedVisits, subjectFindings]);
 
-  // Reset issue state when subject/visit changes.
+  // Reset dispositions when subject/visit changes.
   useEffect(() => {
     const key = `${subject}|${visit}`;
     if (lastSubjectVisit.current !== key) {
       lastSubjectVisit.current = key;
-      setIssueState("pristine");
-      setFlagRationale("");
       setChartFinding(null);
       setAllFindingsOpen(false);
     }
@@ -242,12 +247,23 @@ export function MagicDemo() {
     );
   }, [allFindings, subject, visit]);
 
+  const openFindings = useMemo(
+    () => visitFindings.filter((f) => !dispositions.has(findingKey(f))),
+    [visitFindings, dispositions],
+  );
+  const dispositionedFindings = useMemo(
+    () => visitFindings.filter((f) => dispositions.has(findingKey(f))),
+    [visitFindings, dispositions],
+  );
+
   const heroFinding = useMemo(() => {
-    if (visitFindings.length === 0) return null;
-    return [...visitFindings].sort(
+    if (openFindings.length === 0) return null;
+    return [...openFindings].sort(
       (a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity],
     )[0];
-  }, [visitFindings]);
+  }, [openFindings]);
+
+  const hasOpenCritical = openFindings.some((f) => f.severity === "Critical");
 
   // Map of visit -> highest open severity for this subject (used by trajectory + RunBar hint).
   const findingsByVisit = useMemo(() => {
@@ -291,22 +307,12 @@ export function MagicDemo() {
       const r = await runEngine(true);
       setAllFindings(r.findings);
       setErr(null);
-      // Determine open state on the next render via effect.
-      setIssueState("open");
     } catch (e) {
       setErr(String(e));
     } finally {
       setRunning(false);
     }
   };
-
-  // Auto-resolve if current visit no longer has any open Critical findings.
-  useEffect(() => {
-    if (issueState === "pristine") return;
-    const openCrit = visitFindings.some((f) => f.severity === "Critical");
-    if (issueState === "open" && !openCrit) setIssueState("resolved");
-    if (issueState === "resolved" && openCrit) setIssueState("open");
-  }, [visitFindings, issueState]);
 
   const updateMeasurement = (id: string, value: string) => {
     setLesions((rows) =>
@@ -333,8 +339,40 @@ export function MagicDemo() {
     }));
   };
 
-  const changeToSD = () => {
-    if (!heroFinding) return;
+  const disposeFinding = (f: Finding, d: Disposition) => {
+    setDispositions((prev) => {
+      const next = new Map(prev);
+      next.set(findingKey(f), d);
+      return next;
+    });
+  };
+
+  const applyFix = (f: Finding) => {
+    // Standardization: write canonical back into the form (visible follow-up).
+    if (f.template_id === "STANDARDIZATION") {
+      const canonical =
+        (f.template_params as { canonical?: string }).canonical || "";
+      if (canonical && f.lineage.field === "assessment_method_raw") {
+        // (We don't currently surface method in the visit form; the action
+        // is still meaningful from a queue-management perspective.)
+      }
+      if (canonical && f.lineage.field === "target_lesion_response_raw") {
+        setResponses((prev) => ({
+          ...prev,
+          [visit]: { ...(prev[visit] || empty()), target: canonical },
+        }));
+      }
+      if (canonical && f.lineage.field === "overall_response_raw") {
+        setResponses((prev) => ({
+          ...prev,
+          [visit]: { ...(prev[visit] || empty()), overall: canonical },
+        }));
+      }
+    }
+    disposeFinding(f, "resolved");
+  };
+
+  const changeToSD = (f: Finding) => {
     setResponses((prev) => ({
       ...prev,
       [visit]: {
@@ -343,15 +381,18 @@ export function MagicDemo() {
         overall: "Stable Disease",
       },
     }));
-    setIssueState("resolved");
+    disposeFinding(f, "resolved");
   };
 
-  const flagForReview = (rationale: string) => {
-    setFlagRationale(rationale);
-    setIssueState("flagged");
+  const flagForReview = (f: Finding, rationale: string) => {
+    setFlagRationale((prev) => ({ ...prev, [findingKey(f)]: rationale }));
+    disposeFinding(f, "flagged");
   };
 
-  const submitBlocked = issueState === "open" || issueState === "pristine";
+  const acknowledge = (f: Finding) => disposeFinding(f, "acknowledged");
+
+  const ran = allFindings !== null;
+  const submitBlocked = !ran || hasOpenCritical;
   const responseRow = responses[visit] || empty();
 
   return (
@@ -375,11 +416,15 @@ export function MagicDemo() {
           )}
 
           <RunBar
-            ran={issueState !== "pristine" || allFindings !== null}
+            ran={ran}
             running={running}
-            findingCount={visitFindings.length}
+            findingCount={openFindings.length}
             onRun={runCheck}
-            otherVisits={otherVisitsWithFindings(subjectFindings, visit)}
+            otherVisits={otherVisitsWithFindings(
+              subjectFindings,
+              visit,
+              dispositions,
+            )}
             onJumpToVisit={(v) =>
               setParams({ subject, visit: v as string })
             }
@@ -409,35 +454,46 @@ export function MagicDemo() {
                 />
               )}
 
-              {issueState === "open" && heroFinding && (
+              {heroFinding && (
                 <IssueCallout
                   finding={heroFinding}
-                  visitFindings={visitFindings}
-                  onChangeToSd={changeToSD}
+                  openCount={openFindings.length}
+                  onChangeToSd={() => changeToSD(heroFinding)}
+                  onApplyFix={() => applyFix(heroFinding)}
+                  onAcknowledge={() => acknowledge(heroFinding)}
                   onFlag={() => {
                     const rationale = prompt(
                       "Add a brief rationale for flagging this for investigator review:",
                       "",
                     );
-                    if (rationale != null) flagForReview(rationale);
+                    if (rationale != null)
+                      flagForReview(heroFinding, rationale);
                   }}
                   onViewTrajectory={
                     heroFinding.template_id === "RESPONSE_THRESHOLD"
                       ? () => setChartFinding(heroFinding)
                       : null
                   }
+                  onSeeAll={
+                    openFindings.length + dispositionedFindings.length > 1
+                      ? () => setAllFindingsOpen(true)
+                      : null
+                  }
+                />
+              )}
+
+              {dispositionedFindings.length > 0 && (
+                <DispositionedSummary
+                  dispositionedFindings={dispositionedFindings}
+                  dispositions={dispositions}
+                  flagRationale={flagRationale}
                   onSeeAll={() => setAllFindingsOpen(true)}
+                  hasOpen={openFindings.length > 0}
                 />
               )}
-              {issueState === "flagged" && heroFinding && (
-                <FlaggedCallout rationale={flagRationale} />
-              )}
-              {issueState === "resolved" && (
-                <ResolvedCallout
-                  remaining={visitFindings.filter(
-                    (f) => f.severity !== "Critical",
-                  )}
-                />
+
+              {ran && visitFindings.length === 0 && (
+                <CleanVisit />
               )}
             </>
           )}
@@ -446,7 +502,13 @@ export function MagicDemo() {
 
       <SubmitFooter
         blocked={submitBlocked}
-        state={issueState}
+        openCriticalCount={openFindings.filter(
+          (f) => f.severity === "Critical",
+        ).length}
+        openOtherCount={openFindings.filter(
+          (f) => f.severity !== "Critical",
+        ).length}
+        ran={ran}
         onReset={() => window.location.reload()}
       />
 
@@ -716,11 +778,13 @@ function RunBar({
 function otherVisitsWithFindings(
   subjectFindings: Finding[],
   currentVisit: string,
+  dispositions: Map<string, Disposition>,
 ): { visit: string; severity: Finding["severity"] }[] {
   const map = new Map<string, Finding["severity"]>();
   for (const f of subjectFindings) {
     const v = f.visit || "";
     if (v === currentVisit) continue;
+    if (dispositions.has(findingKey(f))) continue;
     const prev = map.get(v);
     if (
       !prev ||
@@ -1061,18 +1125,22 @@ function ResponseField({
 
 function IssueCallout({
   finding,
-  visitFindings,
+  openCount,
   onChangeToSd,
+  onApplyFix,
+  onAcknowledge,
   onFlag,
   onViewTrajectory,
   onSeeAll,
 }: {
   finding: Finding;
-  visitFindings: Finding[];
+  openCount: number;
   onChangeToSd: () => void;
+  onApplyFix: () => void;
+  onAcknowledge: () => void;
   onFlag: () => void;
   onViewTrajectory: (() => void) | null;
-  onSeeAll: () => void;
+  onSeeAll: (() => void) | null;
 }) {
   const sev = finding.severity;
   const borderTone =
@@ -1120,14 +1188,31 @@ function IssueCallout({
         </ul>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
+        {/* Primary action varies by rule/severity */}
         {finding.rule_id === "TR-RS-001" && (
           <button className="btn btn-primary" onClick={onChangeToSd}>
             Change to Stable Disease
           </button>
         )}
-        {sev === "Critical" && (
+        {finding.template_id === "STANDARDIZATION" && (
+          <button className="btn btn-primary" onClick={onApplyFix}>
+            Apply standardization
+          </button>
+        )}
+        {sev === "Critical" &&
+          finding.rule_id !== "TR-RS-001" && (
+            <button className="btn btn-danger" onClick={onFlag}>
+              Flag for investigator
+            </button>
+          )}
+        {sev === "Critical" && finding.rule_id === "TR-RS-001" && (
           <button className="btn" onClick={onFlag}>
             Flag for investigator
+          </button>
+        )}
+        {sev !== "Critical" && finding.template_id !== "STANDARDIZATION" && (
+          <button className="btn" onClick={onAcknowledge}>
+            Acknowledge
           </button>
         )}
         {onViewTrajectory && (
@@ -1135,11 +1220,92 @@ function IssueCallout({
             View trajectory
           </button>
         )}
-        {visitFindings.length > 1 && (
-          <button className="btn ml-auto" onClick={onSeeAll}>
-            See all {visitFindings.length} findings
+        <div className="ml-auto flex items-center gap-3">
+          {openCount > 1 && (
+            <span className="text-2xs text-slate-500">
+              {openCount - 1} more open
+            </span>
+          )}
+          {onSeeAll && (
+            <button className="btn" onClick={onSeeAll}>
+              See all
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DispositionedSummary({
+  dispositionedFindings,
+  dispositions,
+  flagRationale,
+  onSeeAll,
+  hasOpen,
+}: {
+  dispositionedFindings: Finding[];
+  dispositions: Map<string, Disposition>;
+  flagRationale: Record<string, string>;
+  onSeeAll: () => void;
+  hasOpen: boolean;
+}) {
+  const counts = { resolved: 0, flagged: 0, acknowledged: 0 };
+  for (const f of dispositionedFindings) {
+    const d = dispositions.get(findingKey(f));
+    if (d) counts[d] += 1;
+  }
+  const allHandled = !hasOpen;
+  return (
+    <div
+      className={`border-l-[3px] ${
+        allHandled
+          ? "border-emerald-600 bg-emerald-50/60"
+          : "border-stone-300 bg-stone-50"
+      } px-5 py-3 flex items-start gap-3`}
+    >
+      <span
+        className={`text-2xs font-semibold tracking-wider px-1.5 py-0.5 text-white ${
+          allHandled ? "bg-emerald-600" : "bg-stone-500"
+        }`}
+      >
+        {allHandled ? "All findings handled" : "Already handled"}
+      </span>
+      <div className="text-sm text-slate-700">
+        {allHandled
+          ? "Every finding on this visit has been resolved, flagged, or acknowledged."
+          : `${dispositionedFindings.length} of this visit's findings already handled.`}{" "}
+        <span className="text-slate-500 mono text-2xs">
+          {counts.resolved} resolved · {counts.flagged} flagged ·{" "}
+          {counts.acknowledged} acknowledged
+        </span>
+      </div>
+      {dispositionedFindings.some(
+        (f) => dispositions.get(findingKey(f)) === "flagged",
+      ) && (
+        <div className="ml-auto text-2xs">
+          <button
+            onClick={onSeeAll}
+            className="text-accent-700 hover:text-accent-800"
+          >
+            View rationale →
           </button>
-        )}
+        </div>
+      )}
+      {/* Render flag rationales inline (max 1 here) */}
+      {Object.values(flagRationale).slice(0, 0)}
+    </div>
+  );
+}
+
+function CleanVisit() {
+  return (
+    <div className="border-l-[3px] border-emerald-600 bg-emerald-50/60 px-5 py-3 flex items-start gap-3">
+      <span className="text-2xs font-semibold tracking-wider px-1.5 py-0.5 bg-emerald-600 text-white">
+        Clean
+      </span>
+      <div className="text-sm text-slate-700">
+        No findings raised on this visit. Submit when ready.
       </div>
     </div>
   );
@@ -1159,72 +1325,38 @@ function ruleHeadline(f: Finding): string {
   }[f.rule_id] || "Finding raised by the consistency engine.";
 }
 
-function ResolvedCallout({ remaining }: { remaining: Finding[] }) {
-  return (
-    <div className="border-l-[3px] border-emerald-600 bg-emerald-50/60 px-5 py-3 flex items-start gap-3">
-      <span className="text-2xs font-semibold tracking-wider px-1.5 py-0.5 bg-emerald-600 text-white">
-        Resolved
-      </span>
-      <div className="text-sm text-slate-800">
-        Critical findings on this visit have been resolved.
-        {remaining.length > 0 && (
-          <span className="text-slate-500">
-            {" "}
-            {remaining.length} non-critical finding
-            {remaining.length === 1 ? "" : "s"} remain for review.
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function FlaggedCallout({ rationale }: { rationale: string }) {
-  return (
-    <div className="border-l-[3px] border-sev-warning-600 bg-sev-warning-50/60 px-5 py-3">
-      <div className="flex items-center gap-2">
-        <span className="text-2xs font-semibold tracking-wider px-1.5 py-0.5 bg-sev-warning-600 text-white">
-          Flagged for investigator review
-        </span>
-        <span className="text-2xs text-slate-500">
-          Submission allowed; the data manager will review.
-        </span>
-      </div>
-      {rationale && (
-        <div className="text-sm text-slate-700 mt-2 max-w-3xl leading-snug">
-          <span className="kicker mr-2">Rationale</span>
-          {rationale}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 
 function SubmitFooter({
   blocked,
-  state,
+  openCriticalCount,
+  openOtherCount,
+  ran,
   onReset,
 }: {
   blocked: boolean;
-  state: IssueState;
+  openCriticalCount: number;
+  openOtherCount: number;
+  ran: boolean;
   onReset: () => void;
 }) {
+  let msg: React.ReactNode = "This visit is ready to submit.";
+  if (!ran) msg = "Run a consistency check before submitting.";
+  else if (openCriticalCount > 0)
+    msg = (
+      <span className="text-sev-critical-700">
+        {openCriticalCount} critical finding{openCriticalCount === 1 ? "" : "s"}
+        {" "}
+        must be resolved or flagged before submission.
+      </span>
+    );
+  else if (openOtherCount > 0)
+    msg = `${openOtherCount} non-critical finding${
+      openOtherCount === 1 ? "" : "s"
+    } open. You can submit, or handle them first.`;
   return (
     <footer className="border-t border-stone-200 bg-white px-6 py-3 flex items-center gap-3 shrink-0">
-      <div className="text-2xs text-slate-500">
-        {state === "pristine" && "Run a consistency check before submitting."}
-        {state === "open" && (
-          <span className="text-sev-critical-700">
-            Critical findings must be resolved or flagged before submission.
-          </span>
-        )}
-        {state === "resolved" &&
-          "All critical findings resolved. This visit is ready to submit."}
-        {state === "flagged" &&
-          "Findings flagged for review. Submission allowed with rationale."}
-      </div>
+      <div className="text-2xs text-slate-500">{msg}</div>
       <button className="btn ml-auto" onClick={onReset}>
         Reset
       </button>
