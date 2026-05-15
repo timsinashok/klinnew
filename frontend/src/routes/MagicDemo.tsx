@@ -71,6 +71,10 @@ export function MagicDemo() {
   const visitParam = params.get("visit") as Visit | null;
 
   const [lesions, setLesions] = useState<LesionRow[]>([]);
+  const [methods, setMethods] = useState<Record<string, string>>({});
+  const [assessmentDates, setAssessmentDates] = useState<
+    Record<string, string>
+  >({});
   const [responses, setResponses] = useState<Record<string, ResponseRecord>>({});
   const [allFindings, setAllFindings] = useState<Finding[] | null>(null);
   const [running, setRunning] = useState(false);
@@ -156,6 +160,24 @@ export function MagicDemo() {
         return a.id.localeCompare(b.id);
       });
       setLesions(next);
+
+      // Per-visit form metadata — method + assessment date — read from the
+      // first row at each visit (they're consistent across rows in practice).
+      const methodMap: Record<string, string> = {};
+      const dateMap: Record<string, string> = {};
+      for (const r of baselineRows) {
+        if (!methodMap["Baseline"])
+          methodMap["Baseline"] = r.assessment_method_raw || "";
+        if (!dateMap["Baseline"])
+          dateMap["Baseline"] = r.assessment_date || "";
+      }
+      for (const r of followupRows) {
+        if (!methodMap[r.visit])
+          methodMap[r.visit] = r.assessment_method_raw || "";
+        if (!dateMap[r.visit]) dateMap[r.visit] = r.assessment_date || "";
+      }
+      setMethods(methodMap);
+      setAssessmentDates(dateMap);
 
       const respMap: Record<string, ResponseRecord> = {};
       for (const r of responseRows) {
@@ -334,8 +356,7 @@ export function MagicDemo() {
       const canonical =
         (f.template_params as { canonical?: string }).canonical || "";
       if (canonical && f.lineage.field === "assessment_method_raw") {
-        // (We don't currently surface method in the visit form; the action
-        // is still meaningful from a queue-management perspective.)
+        setMethods((prev) => ({ ...prev, [visit]: canonical }));
       }
       if (canonical && f.lineage.field === "target_lesion_response_raw") {
         setResponses((prev) => ({
@@ -348,6 +369,17 @@ export function MagicDemo() {
           ...prev,
           [visit]: { ...(prev[visit] || empty()), overall: canonical },
         }));
+      }
+      // Unit standardization: canonical is "X mm" — just refresh the unit
+      // on every TARGET row to "mm" (engine treats cm→mm conversion).
+      if (canonical && f.lineage.field === "measurement_unit_raw") {
+        setLesions((rows) =>
+          rows.map((r) =>
+            r.category === "TARGET"
+              ? { ...r, units: { ...r.units, [visit]: "mm" } }
+              : r,
+          ),
+        );
       }
     }
     disposeFinding(f, "resolved");
@@ -479,6 +511,14 @@ export function MagicDemo() {
                 lesions={lesions}
                 visit={visit}
                 visitsThrough={visitsThroughCurrent}
+                method={methods[visit] || ""}
+                onMethodChange={(v) =>
+                  setMethods((prev) => ({ ...prev, [visit]: v }))
+                }
+                assessmentDate={assessmentDates[visit] || ""}
+                onDateChange={(v) =>
+                  setAssessmentDates((prev) => ({ ...prev, [visit]: v }))
+                }
                 onUpdate={updateMeasurement}
                 onUpdateStatus={updateStatus}
                 targetSum={targetSum}
@@ -875,6 +915,10 @@ function TumorAssessment({
   lesions,
   visit,
   visitsThrough,
+  method,
+  onMethodChange,
+  assessmentDate,
+  onDateChange,
   onUpdate,
   onUpdateStatus,
   targetSum,
@@ -885,6 +929,10 @@ function TumorAssessment({
   lesions: LesionRow[];
   visit: Visit;
   visitsThrough: Visit[];
+  method: string;
+  onMethodChange: (v: string) => void;
+  assessmentDate: string;
+  onDateChange: (v: string) => void;
   onUpdate: (id: string, v: string) => void;
   onUpdateStatus: (id: string, v: string) => void;
   targetSum: number;
@@ -898,12 +946,74 @@ function TumorAssessment({
     heroFinding?.rule_id === "TU-TR-001"
       ? ((heroFinding.template_params as { ghost_id?: string }).ghost_id ?? null)
       : null;
+  const methodFlagged =
+    !!heroFinding &&
+    heroFinding.template_id === "STANDARDIZATION" &&
+    heroFinding.lineage.field === "assessment_method_raw";
+  const methodOptions = [
+    "CT SCAN",
+    "MRI",
+    "PET CT",
+    "X-RAY",
+    "computed tomography",
+  ];
+  const methodChoices =
+    method && !methodOptions.includes(method)
+      ? [...methodOptions, method]
+      : methodOptions;
   return (
     <section>
       <SectionHead
         title="Tumor Assessment"
         subtitle="Record this visit's lesion measurements. Prior visits shown for context."
       />
+      <div className="panel p-4 mb-3 grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr] gap-4">
+        <label className="block">
+          <div className="kicker mb-1">Assessment date</div>
+          <input
+            type="date"
+            className="field w-full h-9 text-sm"
+            value={assessmentDate}
+            onChange={(e) => onDateChange(e.target.value)}
+          />
+        </label>
+        <label className="block">
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="kicker">Imaging method</span>
+            {methodFlagged && (
+              <span
+                aria-label="suggested change"
+                className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-sev-suggested-600 text-white text-[9px] font-bold"
+              >
+                i
+              </span>
+            )}
+          </div>
+          <select
+            className={`field w-full h-9 text-sm ${
+              methodFlagged
+                ? "is-flagged-suggested border-sev-suggested-500 bg-sev-suggested-50"
+                : ""
+            }`}
+            value={method}
+            onChange={(e) => onMethodChange(e.target.value)}
+          >
+            {methodChoices.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <div className="kicker mb-1">Assessor</div>
+          <input
+            readOnly
+            value="Investigator"
+            className="field w-full h-9 text-sm"
+          />
+        </label>
+      </div>
       <div className="panel overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
