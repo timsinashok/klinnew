@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { fetchCsv, parseCsv, runEngine } from "../api";
 import { ChartTemplate } from "../components/ChartTemplate";
-import type { Finding } from "../types";
-
-const SUBJECT = "SUBJ001";
-const VISIT = "Week 16";
-const VISIT_DATE = "2026-04-25";
+import { SeverityChip } from "../components/SeverityBadge";
+import type { Finding, Severity } from "../types";
+import { SEV_RANK } from "../ui/tokens";
 
 const VISITS = [
   "Baseline",
@@ -16,27 +15,41 @@ const VISITS = [
   "Week 40",
   "Week 48",
 ] as const;
+type Visit = (typeof VISITS)[number];
 
-interface ResponseForm {
+const SUBJECTS = ["SUBJ001", "SUBJ002", "SUBJ003", "SUBJ004", "SUBJ005"];
+
+const RESPONSE_OPTIONS = [
+  "Complete Response",
+  "Partial Response",
+  "Stable Disease",
+  "Progressive Disease",
+  "Not evaluable",
+];
+const NONTARGET_OPTIONS = [
+  "Complete Response",
+  "NON-CR/NON-PD",
+  "Progressive Disease",
+  "Not evaluable",
+];
+const NEW_LESION_OPTIONS = ["NO NEW LESIONS", "NEW LESIONS PRESENT"];
+
+interface LesionRow {
+  id: string;
+  category: "TARGET" | "NON-TARGET" | "NEW";
+  description: string;
+  measurements: Record<string, string>; // visit -> mm
+  units: Record<string, string>;
+  status: Record<string, string>;
+  firstSeenAt: Visit;
+}
+
+interface ResponseRecord {
   target: string;
   nontarget: string;
   newlesions: string;
   overall: string;
-}
-
-interface PriorMeasure {
-  baseline?: string;
-  week8?: string;
-}
-
-interface LesionRow {
-  id: string;
-  category: "TARGET" | "NON-TARGET";
-  description: string;
-  prior: PriorMeasure;
-  week16: string;
-  unit: string;
-  status: string;
+  date: string;
 }
 
 type IssueState = "pristine" | "open" | "resolved" | "flagged";
@@ -44,92 +57,194 @@ type IssueState = "pristine" | "open" | "resolved" | "flagged";
 // ---------------------------------------------------------------------------
 
 export function MagicDemo() {
+  const [params, setParams] = useSearchParams();
+  const subject = params.get("subject") || "SUBJ001";
+  const visitParam = params.get("visit") as Visit | null;
+
   const [lesions, setLesions] = useState<LesionRow[]>([]);
-  const [response, setResponse] = useState<ResponseForm>({
-    target: "",
-    nontarget: "",
-    newlesions: "",
-    overall: "",
-  });
-  const [responseDate, setResponseDate] = useState<string>("");
-  const [issueState, setIssueState] = useState<IssueState>("pristine");
+  const [responses, setResponses] = useState<Record<string, ResponseRecord>>({});
+  const [allFindings, setAllFindings] = useState<Finding[] | null>(null);
   const [running, setRunning] = useState(false);
-  const [flagRationale, setFlagRationale] = useState("");
-  const [trajectoryOpen, setTrajectoryOpen] = useState(false);
-  const [finding, setFinding] = useState<Finding | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [issueState, setIssueState] = useState<IssueState>("pristine");
+  const [flagRationale, setFlagRationale] = useState("");
+  const [chartFinding, setChartFinding] = useState<Finding | null>(null);
+  const [allFindingsOpen, setAllFindingsOpen] = useState(false);
+  const lastSubjectVisit = useRef<string>("");
+
+  // Load data once.
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [eb, ef, ed] = await Promise.all([
+        fetchCsv("ecrf_baseline.csv").then(parseCsv),
+        fetchCsv("ecrf_followup.csv").then(parseCsv),
+        fetchCsv("ecrf_disease_response.csv").then(parseCsv),
+      ]);
+      const subj = subject;
+      const baselineRows = eb.filter((r) => r.subject_id === subj);
+      const followupRows = ef.filter((r) => r.subject_id === subj);
+      const responseRows = ed.filter((r) => r.subject_id === subj);
+
+      const lesionIds = new Set<string>();
+      baselineRows.forEach((r) => lesionIds.add(r.lesion_number));
+      followupRows.forEach((r) => lesionIds.add(r.lesion_number));
+
+      const next: LesionRow[] = [];
+      for (const id of lesionIds) {
+        const bl = baselineRows.find((r) => r.lesion_number === id);
+        const newAt = followupRows.find(
+          (r) => r.lesion_number === id && r.lesion_category === "NEW",
+        );
+        const category = bl
+          ? ((bl.lesion_category as "TARGET" | "NON-TARGET") ?? "TARGET")
+          : newAt
+            ? "NEW"
+            : "TARGET";
+        const description =
+          bl?.lesion_description ||
+          followupRows.find((r) => r.lesion_number === id)?.lesion_description ||
+          "";
+        const measurements: Record<string, string> = {};
+        const units: Record<string, string> = {};
+        const status: Record<string, string> = {};
+        if (bl) {
+          measurements["Baseline"] = bl.measurement_value || "";
+          units["Baseline"] = bl.measurement_unit_raw || "mm";
+          status["Baseline"] = bl.lesion_status || "PRESENT";
+        }
+        for (const r of followupRows.filter((r) => r.lesion_number === id)) {
+          measurements[r.visit] = r.measurement_value || "";
+          units[r.visit] = r.measurement_unit_raw || "mm";
+          status[r.visit] = r.lesion_status || "PRESENT";
+        }
+        const firstSeen = bl
+          ? "Baseline"
+          : (followupRows.find((r) => r.lesion_number === id)?.visit as Visit) ||
+            "Baseline";
+        next.push({
+          id,
+          category,
+          description,
+          measurements,
+          units,
+          status,
+          firstSeenAt: firstSeen as Visit,
+        });
+      }
+      // Deterministic order: targets, then non-targets, then NEW; within each by id.
+      next.sort((a, b) => {
+        const rank = { TARGET: 0, "NON-TARGET": 1, NEW: 2 } as const;
+        if (rank[a.category] !== rank[b.category])
+          return rank[a.category] - rank[b.category];
+        return a.id.localeCompare(b.id);
+      });
+      setLesions(next);
+
+      const respMap: Record<string, ResponseRecord> = {};
+      for (const r of responseRows) {
+        respMap[r.visit] = {
+          target: r.target_lesion_response_raw || "",
+          nontarget: r.non_target_lesion_response_raw || "",
+          newlesions: r.new_lesion_response_raw || "",
+          overall: r.overall_response_raw || "",
+          date: r.response_assessment_date || "",
+        };
+      }
+      setResponses(respMap);
+
+      setErr(null);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [subject]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const ef = await fetchCsv("ecrf_followup.csv").then(parseCsv);
-        const ed = await fetchCsv("ecrf_disease_response.csv").then(parseCsv);
-        const subjFollowup = ef.filter((r) => r.subject_id === SUBJECT);
-        const lesionIds = Array.from(
-          new Set(subjFollowup.map((r) => r.lesion_number)),
-        );
-        const next: LesionRow[] = lesionIds.map((id) => {
-          const w16 = subjFollowup.find(
-            (r) => r.lesion_number === id && r.visit === VISIT,
-          );
-          const w8 = subjFollowup.find(
-            (r) => r.lesion_number === id && r.visit === "Week 8",
-          );
-          return {
-            id,
-            category: (w16?.lesion_category as "TARGET" | "NON-TARGET") ||
-              (w8?.lesion_category as "TARGET" | "NON-TARGET") ||
-              "TARGET",
-            description: w16?.lesion_description || w8?.lesion_description || "",
-            prior: {
-              baseline: baselineFor(id),
-              week8: w8?.measurement_value || undefined,
-            },
-            week16: w16?.measurement_value || "",
-            unit: w16?.measurement_unit_raw || "mm",
-            status: w16?.lesion_status || "PRESENT",
-          };
-        });
-        setLesions(next);
+    load();
+  }, [load]);
 
-        const dr = ed.find(
-          (r) => r.subject_id === SUBJECT && r.visit === VISIT,
-        );
-        if (dr) {
-          setResponse({
-            target: dr.target_lesion_response_raw || "",
-            nontarget: dr.non_target_lesion_response_raw || "",
-            newlesions: dr.new_lesion_response_raw || "",
-            overall: dr.overall_response_raw || "",
-          });
-          setResponseDate(dr.response_assessment_date || VISIT_DATE);
-        }
-      } catch (e) {
-        setErr(String(e));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  // Determine visits this subject has actually recorded data for.
+  const completedVisits = useMemo<Visit[]>(() => {
+    const set = new Set<string>();
+    for (const l of lesions) {
+      for (const v of Object.keys(l.measurements)) set.add(v);
+      for (const v of Object.keys(l.status)) set.add(v);
+    }
+    for (const v of Object.keys(responses)) set.add(v);
+    return VISITS.filter((v) => set.has(v));
+  }, [lesions, responses]);
+
+  // Resolve the active visit, defaulting to latest completed.
+  const visit: Visit = useMemo(() => {
+    if (visitParam && (VISITS as readonly string[]).includes(visitParam))
+      return visitParam as Visit;
+    return (completedVisits[completedVisits.length - 1] ?? "Week 16") as Visit;
+  }, [visitParam, completedVisits]);
+
+  // Reset issue state when subject/visit changes.
+  useEffect(() => {
+    const key = `${subject}|${visit}`;
+    if (lastSubjectVisit.current !== key) {
+      lastSubjectVisit.current = key;
+      setIssueState("pristine");
+      setFlagRationale("");
+      setChartFinding(null);
+      setAllFindingsOpen(false);
+    }
+  }, [subject, visit]);
+
+  // Sub-set of visits up to and including the current one (for the table).
+  const visitsThroughCurrent = useMemo<Visit[]>(() => {
+    const cur = VISITS.indexOf(visit);
+    return VISITS.slice(0, cur + 1) as unknown as Visit[];
+  }, [visit]);
+
+  // Findings for the chosen subject + visit.
+  const visitFindings = useMemo(() => {
+    if (!allFindings) return [];
+    return allFindings.filter(
+      (f) => f.subject_id === subject && (f.visit || "") === visit,
+    );
+  }, [allFindings, subject, visit]);
+
+  const heroFinding = useMemo(() => {
+    if (visitFindings.length === 0) return null;
+    return [...visitFindings].sort(
+      (a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity],
+    )[0];
+  }, [visitFindings]);
+
+  // Sum of target diameters at the current visit.
+  const targetSum = useMemo(() => {
+    return lesions
+      .filter((l) => l.category === "TARGET")
+      .reduce(
+        (acc, l) => acc + (parseFloat(l.measurements[visit] || "") || 0),
+        0,
+      );
+  }, [lesions, visit]);
+  const baselineSum = useMemo(() => {
+    return lesions
+      .filter((l) => l.category === "TARGET")
+      .reduce(
+        (acc, l) => acc + (parseFloat(l.measurements["Baseline"] || "") || 0),
+        0,
+      );
+  }, [lesions]);
+  const pctChange =
+    baselineSum > 0 ? ((targetSum - baselineSum) / baselineSum) * 100 : 0;
 
   const runCheck = async () => {
     setRunning(true);
     try {
       const r = await runEngine(true);
-      const f = r.findings.find(
-        (x) =>
-          x.subject_id === SUBJECT &&
-          x.visit === VISIT &&
-          x.rule_id === "TR-RS-001",
-      );
-      setFinding(f || null);
-      if (response.target.toUpperCase().includes("PARTIAL") || response.target === "PR") {
-        setIssueState("open");
-      } else {
-        setIssueState("resolved");
-      }
+      setAllFindings(r.findings);
       setErr(null);
+      // Determine open state on the next render via effect.
+      setIssueState("open");
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -137,31 +252,48 @@ export function MagicDemo() {
     }
   };
 
-  const updateW16Measurement = (id: string, value: string) => {
+  // Auto-resolve if current visit no longer has any open Critical findings.
+  useEffect(() => {
+    if (issueState === "pristine") return;
+    const openCrit = visitFindings.some((f) => f.severity === "Critical");
+    if (issueState === "open" && !openCrit) setIssueState("resolved");
+    if (issueState === "resolved" && openCrit) setIssueState("open");
+  }, [visitFindings, issueState]);
+
+  const updateMeasurement = (id: string, value: string) => {
     setLesions((rows) =>
-      rows.map((r) => (r.id === id ? { ...r, week16: value } : r)),
+      rows.map((r) =>
+        r.id === id
+          ? { ...r, measurements: { ...r.measurements, [visit]: value } }
+          : r,
+      ),
     );
-    if (issueState === "resolved" || issueState === "flagged") {
-      setIssueState("open");
-    }
   };
 
-  const updateResponse = (key: keyof ResponseForm, value: string) => {
-    setResponse((p) => ({ ...p, [key]: value }));
-    if (key === "target" || key === "overall") {
-      const newTarget = key === "target" ? value : response.target;
-      const newOverall = key === "overall" ? value : response.overall;
-      const stillPR =
-        looksPR(newTarget) || looksPR(newOverall);
-      setIssueState(stillPR ? "open" : "resolved");
-    }
+  const updateStatus = (id: string, value: string) => {
+    setLesions((rows) =>
+      rows.map((r) =>
+        r.id === id ? { ...r, status: { ...r.status, [visit]: value } } : r,
+      ),
+    );
+  };
+
+  const updateResponse = (key: keyof ResponseRecord, value: string) => {
+    setResponses((prev) => ({
+      ...prev,
+      [visit]: { ...(prev[visit] || empty()), [key]: value },
+    }));
   };
 
   const changeToSD = () => {
-    setResponse((p) => ({
-      ...p,
-      target: "Stable Disease",
-      overall: "Stable Disease",
+    if (!heroFinding) return;
+    setResponses((prev) => ({
+      ...prev,
+      [visit]: {
+        ...(prev[visit] || empty()),
+        target: "Stable Disease",
+        overall: "Stable Disease",
+      },
     }));
     setIssueState("resolved");
   };
@@ -171,31 +303,22 @@ export function MagicDemo() {
     setIssueState("flagged");
   };
 
-  const targetSum = useMemo(() => {
-    return lesions
-      .filter((l) => l.category === "TARGET")
-      .reduce((acc, l) => acc + (parseFloat(l.week16) || 0), 0);
-  }, [lesions]);
-
-  const baselineSum = useMemo(() => {
-    return lesions
-      .filter((l) => l.category === "TARGET")
-      .reduce((acc, l) => acc + (parseFloat(l.prior.baseline || "") || 0), 0);
-  }, [lesions]);
-
-  const pctChange =
-    baselineSum > 0 ? ((targetSum - baselineSum) / baselineSum) * 100 : 0;
-
   const submitBlocked = issueState === "open" || issueState === "pristine";
+  const responseRow = responses[visit] || empty();
 
   return (
     <div className="flex flex-col h-full">
-      <EdcChrome />
-
       <div className="flex-1 overflow-y-auto">
-        <PatientHeader />
+        <PatientHeader
+          subject={subject}
+          visit={visit}
+          visitDate={responseRow.date || lesions[0]?.measurements[visit] ? "" : ""}
+          completedVisits={completedVisits}
+          onSubject={(s) => setParams({ subject: s })}
+          onVisit={(v) => setParams({ subject, visit: v })}
+        />
 
-        <div className="max-w-5xl mx-auto px-8 py-6 space-y-8">
+        <div className="max-w-6xl mx-auto px-8 py-6 space-y-8">
           {err && (
             <div className="text-sm text-sev-critical-800 bg-sev-critical-50 border border-sev-critical-300 rounded p-3">
               {err}
@@ -203,45 +326,40 @@ export function MagicDemo() {
           )}
 
           <RunBar
-            ran={issueState !== "pristine"}
+            ran={issueState !== "pristine" || allFindings !== null}
             running={running}
+            findingCount={visitFindings.length}
             onRun={runCheck}
           />
 
           {loading ? (
-            <div className="space-y-3">
-              <div className="h-32 bg-slate-100 rounded animate-pulse" />
-              <div className="h-32 bg-slate-100 rounded animate-pulse" />
-            </div>
+            <SkeletonTwo />
           ) : (
             <>
               <TumorAssessment
                 lesions={lesions}
-                onUpdate={updateW16Measurement}
-                onUpdateStatus={(id, status) =>
-                  setLesions((rs) =>
-                    rs.map((r) => (r.id === id ? { ...r, status } : r)),
-                  )
-                }
+                visit={visit}
+                visitsThrough={visitsThroughCurrent}
+                onUpdate={updateMeasurement}
+                onUpdateStatus={updateStatus}
                 targetSum={targetSum}
                 baselineSum={baselineSum}
                 pctChange={pctChange}
+                heroFinding={heroFinding}
               />
 
-              <DiseaseResponse
-                response={response}
-                date={responseDate}
-                onChange={updateResponse}
-                onDateChange={setResponseDate}
-                issueState={issueState}
-              />
+              {visit !== "Baseline" && (
+                <DiseaseResponse
+                  response={responseRow}
+                  onChange={updateResponse}
+                  heroFinding={heroFinding}
+                />
+              )}
 
-              {issueState === "open" && finding && (
+              {issueState === "open" && heroFinding && (
                 <IssueCallout
-                  finding={finding}
-                  targetSum={targetSum}
-                  baselineSum={baselineSum}
-                  pctChange={pctChange}
+                  finding={heroFinding}
+                  visitFindings={visitFindings}
                   onChangeToSd={changeToSD}
                   onFlag={() => {
                     const rationale = prompt(
@@ -250,14 +368,23 @@ export function MagicDemo() {
                     );
                     if (rationale != null) flagForReview(rationale);
                   }}
-                  onViewTrajectory={() => setTrajectoryOpen(true)}
+                  onViewTrajectory={
+                    heroFinding.template_id === "RESPONSE_THRESHOLD"
+                      ? () => setChartFinding(heroFinding)
+                      : null
+                  }
+                  onSeeAll={() => setAllFindingsOpen(true)}
                 />
               )}
-              {issueState === "flagged" && (
+              {issueState === "flagged" && heroFinding && (
                 <FlaggedCallout rationale={flagRationale} />
               )}
-              {issueState === "resolved" && finding && (
-                <ResolvedCallout />
+              {issueState === "resolved" && (
+                <ResolvedCallout
+                  remaining={visitFindings.filter(
+                    (f) => f.severity !== "Critical",
+                  )}
+                />
               )}
             </>
           )}
@@ -270,93 +397,124 @@ export function MagicDemo() {
         onReset={() => window.location.reload()}
       />
 
-      {trajectoryOpen && finding && (
+      {chartFinding && (
         <TrajectoryDrawer
-          finding={finding}
-          onClose={() => setTrajectoryOpen(false)}
+          finding={chartFinding}
+          subject={subject}
+          onClose={() => setChartFinding(null)}
+        />
+      )}
+      {allFindingsOpen && (
+        <FindingsListDrawer
+          findings={visitFindings}
+          onClose={() => setAllFindingsOpen(false)}
+          onOpenChart={(f) => {
+            setAllFindingsOpen(false);
+            setChartFinding(f);
+          }}
         />
       )}
     </div>
   );
 }
 
+function empty(): ResponseRecord {
+  return { target: "", nontarget: "", newlesions: "", overall: "", date: "" };
+}
+
 // ---------------------------------------------------------------------------
 
-function EdcChrome() {
+function PatientHeader({
+  subject,
+  visit,
+  completedVisits,
+  onSubject,
+  onVisit,
+}: {
+  subject: string;
+  visit: Visit;
+  visitDate: string;
+  completedVisits: Visit[];
+  onSubject: (s: string) => void;
+  onVisit: (v: Visit) => void;
+}) {
   return (
-    <div className="bg-slate-900 text-slate-100 text-2xs px-6 h-8 flex items-center gap-4 shrink-0">
-      <span className="font-semibold tracking-wide">SponsorCloud EDC</span>
-      <span className="text-slate-400">/</span>
-      <span>KLIN-ONC-DEMO-001 · Phase II Solid Tumour</span>
-      <span className="text-slate-400">/</span>
-      <span>Site 042 · Memorial Cancer Center</span>
-      <span className="ml-auto mono text-slate-300">
-        Coord. A. Patel · CRC
-      </span>
-    </div>
-  );
-}
-
-function PatientHeader() {
-  return (
-    <div className="bg-white border-b border-slate-200">
-      <div className="max-w-5xl mx-auto px-8 py-5 flex items-end gap-6">
+    <div className="bg-white border-b border-stone-200">
+      <div className="max-w-6xl mx-auto px-8 py-5 flex items-end gap-6 flex-wrap">
+        <Link
+          to="/"
+          className="text-2xs text-slate-500 hover:text-accent-700 mono"
+        >
+          ← Workspace
+        </Link>
         <div>
-          <div className="text-2xs uppercase tracking-wider text-slate-500 font-medium">
-            Subject
-          </div>
-          <div className="mono text-lg font-semibold text-slate-900 leading-none mt-1">
-            {SUBJECT}
-          </div>
-          <div className="text-2xs text-slate-500 mt-1">
-            Female · 64 · enrolled 2026-01-03
-          </div>
+          <div className="kicker mb-1">Subject</div>
+          <select
+            value={subject}
+            onChange={(e) => onSubject(e.target.value)}
+            className="mono text-lg font-semibold text-slate-900 leading-none bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer pr-1"
+            style={{ appearance: "none" }}
+          >
+            {SUBJECTS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
         </div>
-        <div className="border-l border-slate-200 pl-6">
-          <div className="text-2xs uppercase tracking-wider text-slate-500 font-medium">
-            Visit
-          </div>
-          <div className="text-sm font-medium text-slate-900 mt-1">
-            {VISIT}
-          </div>
-          <div className="text-2xs text-slate-500 mt-0.5 mono">
-            {VISIT_DATE}
-          </div>
+        <div className="border-l border-stone-200 pl-6">
+          <div className="kicker mb-1">Visit</div>
+          <select
+            value={visit}
+            onChange={(e) => onVisit(e.target.value as Visit)}
+            className="text-sm font-medium text-slate-900 bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer pr-1"
+          >
+            {VISITS.filter((v) => completedVisits.includes(v as Visit)).map(
+              (v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ),
+            )}
+          </select>
         </div>
-        <Trajectory />
+        <Trajectory current={visit} completed={completedVisits} />
       </div>
     </div>
   );
 }
 
-function Trajectory() {
+function Trajectory({
+  current,
+  completed,
+}: {
+  current: Visit;
+  completed: Visit[];
+}) {
   return (
     <div className="ml-auto pb-1">
-      <div className="text-2xs uppercase tracking-wider text-slate-500 font-medium mb-2">
-        Visit history
-      </div>
+      <div className="kicker mb-2">Visit history</div>
       <ol className="flex items-center gap-2.5">
         {VISITS.map((v) => {
-          const idx = VISITS.indexOf(v);
-          const cur = idx === 2;
-          const done = idx < 2;
+          const isCur = v === current;
+          const isDone = completed.includes(v as Visit) && !isCur;
           return (
             <li key={v} className="flex flex-col items-center">
               <div
                 className={`w-2.5 h-2.5 rounded-full ${
-                  cur
-                    ? "bg-accent-700 ring-2 ring-accent-200"
-                    : done
+                  isCur
+                    ? "bg-accent-600 ring-2 ring-accent-200"
+                    : isDone
                       ? "bg-slate-700"
-                      : "bg-slate-300"
+                      : "bg-stone-300"
                 }`}
                 title={v}
               />
               <span
                 className={`text-[10px] mt-1 mono ${
-                  cur
+                  isCur
                     ? "text-accent-700 font-semibold"
-                    : done
+                    : isDone
                       ? "text-slate-700"
                       : "text-slate-400"
                 }`}
@@ -376,35 +534,46 @@ function Trajectory() {
 function RunBar({
   ran,
   running,
+  findingCount,
   onRun,
 }: {
   ran: boolean;
   running: boolean;
+  findingCount: number;
   onRun: () => void;
 }) {
   return (
     <div
       className={`panel p-3 flex items-center gap-3 ${
-        ran ? "" : "border-accent-300 bg-accent-50"
+        ran ? "" : "border-accent-300 bg-accent-50/60"
       }`}
     >
       <div className="flex-1">
         <div className="text-sm text-slate-900">
           {ran
-            ? "Consistency check complete."
+            ? findingCount > 0
+              ? `Consistency check found ${findingCount} ${
+                  findingCount === 1 ? "finding" : "findings"
+                } for this visit.`
+              : "Consistency check complete. No findings for this visit."
             : "Ready to submit? Run a consistency check first."}
         </div>
         <div className="text-2xs text-slate-500 mt-0.5">
           Checks this visit's data against prior visits and RECIST 1.1 rules.
         </div>
       </div>
-      <button
-        className="btn btn-primary"
-        onClick={onRun}
-        disabled={running}
-      >
+      <button className="btn btn-primary" onClick={onRun} disabled={running}>
         {running ? "Running…" : ran ? "Re-check" : "Run consistency check"}
       </button>
+    </div>
+  );
+}
+
+function SkeletonTwo() {
+  return (
+    <div className="space-y-3">
+      <div className="h-32 bg-stone-100 rounded animate-pulse" />
+      <div className="h-32 bg-stone-100 rounded animate-pulse" />
     </div>
   );
 }
@@ -413,115 +582,162 @@ function RunBar({
 
 function TumorAssessment({
   lesions,
+  visit,
+  visitsThrough,
   onUpdate,
   onUpdateStatus,
   targetSum,
   baselineSum,
   pctChange,
+  heroFinding,
 }: {
   lesions: LesionRow[];
+  visit: Visit;
+  visitsThrough: Visit[];
   onUpdate: (id: string, v: string) => void;
-  onUpdateStatus: (id: string, status: string) => void;
+  onUpdateStatus: (id: string, v: string) => void;
   targetSum: number;
   baselineSum: number;
   pctChange: number;
+  heroFinding: Finding | null;
 }) {
+  const flagLesion = (heroFinding?.template_params as { lesion_id?: string } | undefined)
+    ?.lesion_id;
+  const ghostId =
+    heroFinding?.rule_id === "TU-TR-001"
+      ? ((heroFinding.template_params as { ghost_id?: string }).ghost_id ?? null)
+      : null;
   return (
     <section>
       <SectionHead
         title="Tumor Assessment"
         subtitle="Record this visit's lesion measurements. Prior visits shown for context."
       />
-      <div className="panel overflow-hidden">
+      <div className="panel overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="text-left px-4 py-2 text-2xs font-medium text-slate-500 uppercase tracking-wider">
-                Lesion
-              </th>
-              <th className="text-left px-4 py-2 text-2xs font-medium text-slate-500 uppercase tracking-wider">
-                Description
-              </th>
-              <th className="text-right px-4 py-2 text-2xs font-medium text-slate-500 uppercase tracking-wider">
-                Baseline
-              </th>
-              <th className="text-right px-4 py-2 text-2xs font-medium text-slate-500 uppercase tracking-wider">
-                Week 8
-              </th>
-              <th className="text-right px-4 py-2 text-2xs font-medium text-accent-700 uppercase tracking-wider bg-accent-50">
-                Week 16
-              </th>
-              <th className="text-left px-4 py-2 text-2xs font-medium text-slate-500 uppercase tracking-wider">
-                Status
-              </th>
+            <tr className="bg-stone-50 border-b border-stone-200">
+              <th className="text-left px-4 py-2 kicker">Lesion</th>
+              <th className="text-left px-4 py-2 kicker">Description</th>
+              {visitsThrough.map((v) => (
+                <th
+                  key={v}
+                  className={`text-right px-4 py-2 kicker ${
+                    v === visit ? "text-accent-700 bg-accent-50" : ""
+                  }`}
+                >
+                  {v === "Baseline" ? "Baseline" : v.replace("Week ", "W")}
+                </th>
+              ))}
+              <th className="text-left px-4 py-2 kicker">Status</th>
             </tr>
           </thead>
           <tbody>
-            {lesions.map((l) => (
-              <tr
-                key={l.id}
-                className="border-b border-slate-100 last:border-b-0"
-              >
-                <td className="px-4 py-2 mono text-sm font-medium">
-                  {l.id}
-                  <span
-                    className={`ml-2 text-[10px] px-1 py-0 rounded ${
-                      l.category === "TARGET"
-                        ? "bg-slate-100 text-slate-600"
-                        : "bg-amber-50 text-amber-700"
+            {lesions.map((l) => {
+              const seenIdx = VISITS.indexOf(l.firstSeenAt);
+              const curIdx = VISITS.indexOf(visit);
+              const visibleAtCurrent = seenIdx <= curIdx;
+              const isFlaggedRow = flagLesion && l.id === flagLesion;
+              const isGhost = ghostId && l.id === ghostId;
+              return (
+                <tr
+                  key={l.id}
+                  className="border-b border-stone-100 last:border-b-0"
+                >
+                  <td
+                    className={`px-4 py-2 mono text-sm font-medium ${
+                      isGhost
+                        ? "text-sev-critical-700 bg-sev-critical-50/60"
+                        : ""
                     }`}
                   >
-                    {l.category === "TARGET" ? "T" : "NT"}
-                  </span>
-                </td>
-                <td className="px-4 py-2 text-sm text-slate-600">
-                  {l.description}
-                </td>
-                <td className="px-4 py-2 text-right mono text-sm text-slate-400">
-                  {l.prior.baseline ? `${l.prior.baseline} mm` : "—"}
-                </td>
-                <td className="px-4 py-2 text-right mono text-sm text-slate-400">
-                  {l.prior.week8 ? `${l.prior.week8} mm` : "—"}
-                </td>
-                <td className="px-4 py-2 bg-accent-50/50">
-                  {l.category === "TARGET" ? (
-                    <div className="flex items-center gap-1 justify-end">
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={l.week16}
-                        onChange={(e) => onUpdate(l.id, e.target.value)}
-                        className="field text-right w-20"
-                      />
-                      <span className="mono text-2xs text-slate-500">mm</span>
-                    </div>
-                  ) : (
-                    <div className="text-right mono text-2xs text-slate-400">
-                      —
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-2">
-                  <select
-                    className="field w-32"
-                    value={l.status}
-                    onChange={(e) => onUpdateStatus(l.id, e.target.value)}
-                  >
-                    {["PRESENT", "ABSENT", "EQUIVOCAL"].map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-              </tr>
-            ))}
+                    {l.id}
+                    <span
+                      className={`ml-2 text-[10px] px-1 py-0 rounded ${
+                        l.category === "TARGET"
+                          ? "bg-stone-100 text-slate-600"
+                          : l.category === "NEW"
+                            ? "bg-sev-critical-50 text-sev-critical-700 border border-sev-critical-200"
+                            : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {l.category === "TARGET"
+                        ? "T"
+                        : l.category === "NEW"
+                          ? "NEW"
+                          : "NT"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-sm text-slate-600">
+                    {l.description}
+                  </td>
+                  {visitsThrough.map((v) => {
+                    const isCur = v === visit;
+                    const value = l.measurements[v] || "";
+                    return (
+                      <td
+                        key={v}
+                        className={`px-4 py-2 ${
+                          isCur ? "bg-accent-50/50" : ""
+                        }`}
+                      >
+                        {l.category !== "NON-TARGET" && visibleAtCurrent ? (
+                          isCur ? (
+                            <div className="flex items-center gap-1 justify-end">
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={value}
+                                onChange={(e) =>
+                                  onUpdate(l.id, e.target.value)
+                                }
+                                className={`field text-right w-20 ${
+                                  isFlaggedRow
+                                    ? "is-flagged-critical"
+                                    : ""
+                                }`}
+                              />
+                              <span className="mono text-2xs text-slate-500">
+                                mm
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="text-right mono text-sm text-slate-400">
+                              {value ? `${value} mm` : "—"}
+                            </div>
+                          )
+                        ) : (
+                          <div className="text-right mono text-2xs text-slate-300">
+                            —
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="px-4 py-2">
+                    {visibleAtCurrent ? (
+                      <select
+                        className="field w-32"
+                        value={l.status[visit] || "PRESENT"}
+                        onChange={(e) => onUpdateStatus(l.id, e.target.value)}
+                      >
+                        {["PRESENT", "ABSENT", "EQUIVOCAL"].map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-2xs text-slate-400 mono">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 flex items-baseline justify-between">
-          <div className="text-2xs uppercase tracking-wider text-slate-500 font-medium">
-            Sum of target diameters
-          </div>
+        <div className="border-t border-stone-200 bg-stone-50 px-4 py-2.5 flex items-baseline justify-between">
+          <div className="kicker">Sum of target diameters</div>
           <div className="flex items-baseline gap-3">
             <span className="mono text-sm font-semibold">
               {targetSum.toFixed(1)} mm
@@ -552,23 +768,16 @@ function TumorAssessment({
 
 function DiseaseResponse({
   response,
-  date,
   onChange,
-  onDateChange,
-  issueState,
+  heroFinding,
 }: {
-  response: ResponseForm;
-  date: string;
-  onChange: (k: keyof ResponseForm, v: string) => void;
-  onDateChange: (v: string) => void;
-  issueState: IssueState;
+  response: ResponseRecord;
+  onChange: (k: keyof ResponseRecord, v: string) => void;
+  heroFinding: Finding | null;
 }) {
-  const targetIsPR = looksPR(response.target);
-  const overallIsPR = looksPR(response.overall);
-  const targetFlagged =
-    (issueState === "open" || issueState === "pristine") && targetIsPR;
-  const overallFlagged =
-    (issueState === "open" || issueState === "pristine") && overallIsPR;
+  const flagFields = new Set(
+    heroFinding ? heroFindingFields(heroFinding) : [],
+  );
 
   return (
     <section>
@@ -581,54 +790,39 @@ function DiseaseResponse({
           <ResponseField
             label="Target response"
             value={response.target}
-            options={[
-              "Complete Response",
-              "Partial Response",
-              "Stable Disease",
-              "Progressive Disease",
-              "Not evaluable",
-            ]}
+            options={RESPONSE_OPTIONS}
             onChange={(v) => onChange("target", v)}
-            flagged={targetFlagged}
+            flagged={flagFields.has("target")}
           />
           <ResponseField
             label="Non-target response"
             value={response.nontarget}
-            options={[
-              "Complete Response",
-              "NON-CR/NON-PD",
-              "Progressive Disease",
-              "Not evaluable",
-            ]}
+            options={NONTARGET_OPTIONS}
             onChange={(v) => onChange("nontarget", v)}
+            flagged={flagFields.has("nontarget")}
           />
           <ResponseField
             label="New lesions"
             value={response.newlesions}
-            options={["NO NEW LESIONS", "NEW LESIONS PRESENT"]}
+            options={NEW_LESION_OPTIONS}
             onChange={(v) => onChange("newlesions", v)}
+            flagged={flagFields.has("newlesions")}
           />
           <ResponseField
             label="Overall response"
             value={response.overall}
-            options={[
-              "Complete Response",
-              "Partial Response",
-              "Stable Disease",
-              "Progressive Disease",
-              "Not evaluable",
-            ]}
+            options={RESPONSE_OPTIONS}
             onChange={(v) => onChange("overall", v)}
-            flagged={overallFlagged}
+            flagged={flagFields.has("overall")}
           />
-          <div className="col-span-2 flex items-center gap-3 pt-3 border-t border-slate-100">
+          <div className="col-span-2 flex items-center gap-3 pt-3 border-t border-stone-100">
             <label className="text-2xs text-slate-500">
               Response assessment date
             </label>
             <input
               type="date"
-              value={date}
-              onChange={(e) => onDateChange(e.target.value)}
+              value={response.date}
+              onChange={(e) => onChange("date", e.target.value)}
               className="field w-40"
             />
             <span className="text-2xs text-slate-400 ml-auto mono">
@@ -639,6 +833,15 @@ function DiseaseResponse({
       </div>
     </section>
   );
+}
+
+function heroFindingFields(f: Finding): string[] {
+  const map: Record<string, string[]> = {
+    "TR-RS-001": ["target", "overall"],
+    "TR-RS-003": ["overall", "nontarget"],
+    "TU/TR-RS-002": ["newlesions", "overall"],
+  };
+  return map[f.rule_id] || [];
 }
 
 function ResponseField({
@@ -670,7 +873,9 @@ function ResponseField({
       </div>
       <select
         className={`field w-full h-9 text-sm ${
-          flagged ? "is-flagged-critical border-sev-critical-500 bg-sev-critical-50" : ""
+          flagged
+            ? "is-flagged-critical border-sev-critical-500 bg-sev-critical-50"
+            : ""
         }`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -690,71 +895,119 @@ function ResponseField({
 
 function IssueCallout({
   finding,
-  targetSum,
-  baselineSum,
-  pctChange,
+  visitFindings,
   onChangeToSd,
   onFlag,
   onViewTrajectory,
+  onSeeAll,
 }: {
   finding: Finding;
-  targetSum: number;
-  baselineSum: number;
-  pctChange: number;
+  visitFindings: Finding[];
   onChangeToSd: () => void;
   onFlag: () => void;
-  onViewTrajectory: () => void;
+  onViewTrajectory: (() => void) | null;
+  onSeeAll: () => void;
 }) {
+  const sev = finding.severity;
+  const borderTone =
+    sev === "Critical"
+      ? "border-sev-critical-600"
+      : sev === "Warning"
+        ? "border-sev-warning-600"
+        : "border-sev-suggested-600";
+  const bg =
+    sev === "Critical"
+      ? "bg-sev-critical-50/60"
+      : sev === "Warning"
+        ? "bg-sev-warning-50/60"
+        : "bg-sev-suggested-50/60";
+  const chip =
+    sev === "Critical"
+      ? "bg-sev-critical-600"
+      : sev === "Warning"
+        ? "bg-sev-warning-600"
+        : "bg-sev-suggested-600";
   return (
-    <div className="border-l-[3px] border-sev-critical-600 bg-sev-critical-50/60 px-5 py-4">
+    <div className={`border-l-[3px] ${borderTone} ${bg} px-5 py-4`}>
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-2xs font-semibold tracking-wider px-1.5 py-0.5 bg-sev-critical-600 text-white">
-          Critical
+        <span
+          className={`text-2xs font-semibold tracking-wider px-1.5 py-0.5 ${chip} text-white`}
+        >
+          {sev}
         </span>
-        <span className="mono text-2xs text-sev-critical-700">
-          {finding.rule_id}
-        </span>
+        <span className="mono text-2xs text-slate-700">{finding.rule_id}</span>
         <span className="ml-auto text-2xs text-slate-500 mono">
-          {finding.translator_source === "llm" ? "ai" : "fallback"}
+          {finding.translator_source === "llm" ? "ai-rendered" : "fallback"}
         </span>
       </div>
       <div className="text-sm font-medium text-slate-900 mb-1.5">
-        Target response is not supported by the measurements at this visit.
+        {ruleHeadline(finding)}
       </div>
-      <div className="text-sm text-slate-700 leading-snug max-w-2xl">
-        Target response is recorded as{" "}
-        <span className="mono">Partial Response</span>, but the sum of target
-        diameters has decreased from{" "}
-        <span className="mono">{baselineSum.toFixed(1)} mm</span> at baseline to{" "}
-        <span className="mono">{targetSum.toFixed(1)} mm</span> at{" "}
-        <span className="mono">Week 16</span> ({" "}
-        <span className="mono font-medium">{Math.abs(pctChange).toFixed(1)}%</span>{" "}
-        decrease). RECIST 1.1 requires at least a 30 % decrease from baseline
-        to call PR; this visit is closer to Stable Disease.
+      <div className="text-sm text-slate-700 leading-snug max-w-3xl">
+        {finding.user_message}
       </div>
+      {finding.suggested_actions.length > 0 && (
+        <ul className="text-sm text-slate-700 mt-2 list-disc list-inside space-y-1 max-w-3xl">
+          {finding.suggested_actions.slice(0, 2).map((a, i) => (
+            <li key={i}>{a}</li>
+          ))}
+        </ul>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
-        <button className="btn btn-primary" onClick={onChangeToSd}>
-          Change to Stable Disease
-        </button>
-        <button className="btn" onClick={onFlag}>
-          Flag for investigator
-        </button>
-        <button className="btn" onClick={onViewTrajectory}>
-          View trajectory
-        </button>
+        {finding.rule_id === "TR-RS-001" && (
+          <button className="btn btn-primary" onClick={onChangeToSd}>
+            Change to Stable Disease
+          </button>
+        )}
+        {sev === "Critical" && (
+          <button className="btn" onClick={onFlag}>
+            Flag for investigator
+          </button>
+        )}
+        {onViewTrajectory && (
+          <button className="btn" onClick={onViewTrajectory}>
+            View trajectory
+          </button>
+        )}
+        {visitFindings.length > 1 && (
+          <button className="btn ml-auto" onClick={onSeeAll}>
+            See all {visitFindings.length} findings
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-function ResolvedCallout() {
+function ruleHeadline(f: Finding): string {
+  return {
+    "TR-RS-001": "Target response is not supported by the measurements.",
+    "TR-RS-003": "Overall CR conflicts with persistent non-target disease.",
+    "TU/TR-RS-002": "New lesion conflicts with this visit's response.",
+    "TU-002": "Duplicate lesion identity at baseline.",
+    "TU-TR-001": "Measurement references a lesion that doesn't exist in TU.",
+    "TR-003": "Imaging method changed from baseline.",
+    "TR-002": "Raw term not in controlled vocabulary.",
+    LARGE_DROP: "Unusually large drop in a target lesion.",
+    VISIT_WINDOW: "Assessment date is outside the visit window.",
+  }[f.rule_id] || "Finding raised by the consistency engine.";
+}
+
+function ResolvedCallout({ remaining }: { remaining: Finding[] }) {
   return (
     <div className="border-l-[3px] border-emerald-600 bg-emerald-50/60 px-5 py-3 flex items-start gap-3">
       <span className="text-2xs font-semibold tracking-wider px-1.5 py-0.5 bg-emerald-600 text-white">
         Resolved
       </span>
       <div className="text-sm text-slate-800">
-        The previously-flagged inconsistency has been resolved by your edit.
+        Critical findings on this visit have been resolved.
+        {remaining.length > 0 && (
+          <span className="text-slate-500">
+            {" "}
+            {remaining.length} non-critical finding
+            {remaining.length === 1 ? "" : "s"} remain for review.
+          </span>
+        )}
       </div>
     </div>
   );
@@ -772,10 +1025,8 @@ function FlaggedCallout({ rationale }: { rationale: string }) {
         </span>
       </div>
       {rationale && (
-        <div className="text-sm text-slate-700 mt-2 max-w-2xl leading-snug">
-          <span className="text-2xs text-slate-500 uppercase tracking-wider mr-2">
-            Rationale
-          </span>
+        <div className="text-sm text-slate-700 mt-2 max-w-3xl leading-snug">
+          <span className="kicker mr-2">Rationale</span>
           {rationale}
         </div>
       )}
@@ -795,18 +1046,18 @@ function SubmitFooter({
   onReset: () => void;
 }) {
   return (
-    <footer className="border-t border-slate-200 bg-white px-6 py-3 flex items-center gap-3 shrink-0">
+    <footer className="border-t border-stone-200 bg-white px-6 py-3 flex items-center gap-3 shrink-0">
       <div className="text-2xs text-slate-500">
         {state === "pristine" && "Run a consistency check before submitting."}
         {state === "open" && (
           <span className="text-sev-critical-700">
-            1 critical issue must be resolved before submission.
+            Critical findings must be resolved or flagged before submission.
           </span>
         )}
         {state === "resolved" &&
-          "All issues resolved. This visit is ready to submit."}
+          "All critical findings resolved. This visit is ready to submit."}
         {state === "flagged" &&
-          "1 issue flagged for review. Submission allowed with rationale."}
+          "Findings flagged for review. Submission allowed with rationale."}
       </div>
       <button className="btn ml-auto" onClick={onReset}>
         Reset
@@ -825,9 +1076,11 @@ function SubmitFooter({
 
 function TrajectoryDrawer({
   finding,
+  subject,
   onClose,
 }: {
   finding: Finding;
+  subject: string;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -837,21 +1090,20 @@ function TrajectoryDrawer({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-
   return (
     <aside
       role="dialog"
       aria-modal="true"
-      className="fixed top-11 right-0 bottom-0 w-[560px] border-l border-slate-200 bg-white shadow-xl z-40 flex flex-col"
+      className="fixed top-12 right-0 bottom-0 w-[560px] border-l border-stone-200 bg-white shadow-xl z-40 flex flex-col"
     >
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-200">
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-200">
         <div className="text-sm font-semibold">
-          Target sum trajectory · {SUBJECT}
+          Target sum trajectory · {subject}
         </div>
         <button
           onClick={onClose}
           aria-label="Close"
-          className="ml-auto text-slate-400 hover:text-slate-900 w-6 h-6 inline-flex items-center justify-center rounded hover:bg-slate-100"
+          className="ml-auto text-slate-400 hover:text-slate-900 w-6 h-6 inline-flex items-center justify-center rounded hover:bg-stone-100"
         >
           ✕
         </button>
@@ -859,13 +1111,76 @@ function TrajectoryDrawer({
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         <div className="text-sm text-slate-600 leading-snug">
           Sum of target lesion diameters across visits, with the RECIST 1.1
-          Partial Response threshold drawn at 70 % of baseline. PR is supported
-          when the line dips below that threshold.
+          PR threshold drawn at 70% of baseline.
         </div>
         <ChartTemplate finding={finding} />
-        <div className="text-2xs text-slate-500 border-t border-slate-200 pt-3">
+        <div className="text-2xs text-slate-500 border-t border-stone-200 pt-3">
           <span className="kicker">Citation</span> {finding.citation}
         </div>
+      </div>
+    </aside>
+  );
+}
+
+function FindingsListDrawer({
+  findings,
+  onClose,
+  onOpenChart,
+}: {
+  findings: Finding[];
+  onClose: () => void;
+  onOpenChart: (f: Finding) => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <aside
+      role="dialog"
+      aria-modal="true"
+      className="fixed top-12 right-0 bottom-0 w-[480px] border-l border-stone-200 bg-white shadow-xl z-40 flex flex-col"
+    >
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-stone-200">
+        <div className="text-sm font-semibold">
+          All findings on this visit
+        </div>
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="ml-auto text-slate-400 hover:text-slate-900 w-6 h-6 inline-flex items-center justify-center rounded hover:bg-stone-100"
+        >
+          ✕
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+        {findings.map((f, i) => (
+          <div key={i} className="panel p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <SeverityChip severity={f.severity} />
+              <span className="mono text-2xs text-slate-500">
+                {f.rule_id}
+              </span>
+              {f.template_id === "RESPONSE_THRESHOLD" && (
+                <button
+                  className="ml-auto text-2xs text-accent-700 hover:text-accent-800"
+                  onClick={() => onOpenChart(f)}
+                >
+                  trajectory →
+                </button>
+              )}
+            </div>
+            <div className="text-sm text-slate-800 leading-snug">
+              {f.user_message}
+            </div>
+          </div>
+        ))}
+        {findings.length === 0 && (
+          <div className="text-2xs text-slate-500 italic">No findings.</div>
+        )}
       </div>
     </aside>
   );
@@ -888,13 +1203,5 @@ function SectionHead({
   );
 }
 
-function looksPR(s: string): boolean {
-  const v = (s || "").trim().toUpperCase();
-  return v === "PR" || v === "PARTIAL RESPONSE";
-}
-
-function baselineFor(lesionId: string): string | undefined {
-  // Hardcoded from data/ecrf_baseline.csv for SUBJ001 — keeps the demo
-  // self-contained without an extra fetch.
-  return { T01: "35.0", T02: "28.0" }[lesionId];
-}
+declare const _SEV: Severity; // (keep tsc happy with unused import in some configs)
+void _SEV;

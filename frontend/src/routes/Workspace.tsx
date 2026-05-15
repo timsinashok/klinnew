@@ -266,7 +266,7 @@ function SubjectRoster({
           Open SUBJ001 →
         </Link>
       </div>
-      <table className="w-full text-sm">
+      <table className="w-full text-sm" role="grid">
         <thead>
           <tr className="bg-stone-50 border-b border-stone-200">
             <th className="text-left px-4 py-2 kicker">Subject</th>
@@ -351,7 +351,14 @@ function SubjectRoster({
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link
-                      to="/magic"
+                      to={{
+                        pathname: "/magic",
+                        search: `?subject=${s.subject_id}${
+                          s.latest_visit
+                            ? `&visit=${encodeURIComponent(s.latest_visit)}`
+                            : ""
+                        }`,
+                      }}
                       className="text-2xs text-accent-700 hover:text-accent-800 mono"
                     >
                       open →
@@ -363,7 +370,8 @@ function SubjectRoster({
         </tbody>
       </table>
       <div className="px-4 py-2 bg-stone-50/60 border-t border-stone-200 text-2xs text-slate-500">
-        Demo dataset · only SUBJ001 is wired into the entry form.
+        Open any subject to enter their visit; the form adapts to that
+        subject's lesions and history.
       </div>
     </section>
   );
