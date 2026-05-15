@@ -107,10 +107,36 @@ data/              synthetic dataset (10 CSVs, lineage on SDTM rows)
 benchmark.py       compare findings to data/expected_issues.csv
 ```
 
+## Demo script (90 seconds)
+
+1. **Workspace** (`/`) — point at the run-summary tile ("11 findings, 5 Critical
+   · 3 Warning · 3 Suggested"). Note the API base, the synthetic-data quick
+   links, and the two demo tiles.
+2. **Magic Demo** (`/magic`) — already on Disease Response.
+   - Click **Run consistency check**. The Week 16 row gets red and blue
+     chips next to `target_lesion_response_raw` and `overall_response_raw`.
+   - Click the red `TR-RS-001` chip → drawer slides in from the right.
+     Read the LLM message, scroll to the SUMDIAM chart with the PR-threshold
+     reference line, point at the source document in lineage.
+   - Click **Flag for investigator** → the Critical is acknowledged; Submit
+     unlocks.
+   - Switch to **Baseline** tab. T01 has a blue `TR-002` chip on the Method
+     cell. Open the drawer → click **Auto-fix and resolve** → the cell
+     rewrites from `computed tomography` to `CT SCAN`.
+   - Reload the page — edits and resolutions persist.
+3. **Pipeline Demo** (`/pipeline`) — step the left rail Ingest → Map → Normalize
+   → Check → Translate. Pause on **Map** to highlight the lineage columns
+   (`source_ecrf_form`, `source_field`, `source_document_id`) — this is how
+   coordinator-facing translations get back to the right form and field.
+
 ## Out of scope (for v0)
 
 - Anomaly detection (LLM looking for novel patterns the rules don't cover) —
   architected for it (NOVEL template id reserved) but not built.
-- Authentication, multi-tenancy, persistence.
+- Authentication, multi-tenancy, server-side persistence (client-side
+  localStorage covers per-session state only).
 - EDC integration (Magic Demo simulates one).
+- Backend re-run with eCRF overrides — edits in the Magic Demo update local
+  state and resolve the matching finding, but don't push back through the
+  mapper to re-evaluate the engine. Honest v0 behaviour.
 - iRECIST or any therapeutic area other than oncology.

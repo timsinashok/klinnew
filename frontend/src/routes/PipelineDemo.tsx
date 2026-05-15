@@ -1,19 +1,44 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { fetchCsv, parseCsv, runEngine } from "../api";
 import { EvidenceTable } from "../components/EvidenceTable";
 import { FindingCard } from "../components/FindingCard";
-import { SeverityBadge } from "../components/SeverityBadge";
+import { SeverityChip } from "../components/SeverityBadge";
 import { SkeletonGrid } from "../components/Skeleton";
 import { Tooltip } from "../components/Tooltip";
-import type { Finding } from "../types";
+import type { Finding, Severity } from "../types";
+import { SEV_BADGE_CLASS } from "../ui/tokens";
 
 const STAGES = [
-  { id: "ingest", name: "Ingest", blurb: "Read eCRF rows from the site." },
-  { id: "map", name: "Map", blurb: "Transform to SDTM, attach lineage." },
-  { id: "normalize", name: "Normalize", blurb: "Apply CDISC controlled terminology." },
-  { id: "check", name: "Check", blurb: "Run the deterministic rule engine." },
-  { id: "translate", name: "Translate", blurb: "Render findings in coordinator language." },
+  {
+    id: "ingest",
+    name: "Ingest",
+    blurb: "Read eCRF rows from the site.",
+    layer: "site",
+  },
+  {
+    id: "map",
+    name: "Map",
+    blurb: "Transform to SDTM, attach lineage.",
+    layer: "engine",
+  },
+  {
+    id: "normalize",
+    name: "Normalize",
+    blurb: "Apply CDISC controlled terminology.",
+    layer: "engine",
+  },
+  {
+    id: "check",
+    name: "Check",
+    blurb: "Run the deterministic rule engine.",
+    layer: "engine",
+  },
+  {
+    id: "translate",
+    name: "Translate",
+    blurb: "Render findings in coordinator language.",
+    layer: "LLM",
+  },
 ] as const;
 type StageId = (typeof STAGES)[number]["id"];
 
@@ -67,31 +92,32 @@ export function PipelineDemo() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-neutral-50 flex flex-col">
-      <header className="border-b bg-white px-6 py-3 flex items-center gap-4">
-        <Link to="/" className="text-sm text-neutral-500 hover:text-neutral-900">
-          ← Home
-        </Link>
-        <div className="text-sm font-semibold">Pipeline Demo</div>
-        <div className="ml-auto text-xs text-neutral-500">
-          Tracing&nbsp;
-          <span className="mono text-neutral-900">{SUBJECT}</span>
-          &nbsp;through five stages
-        </div>
+    <div className="flex flex-col h-full">
+      <header className="border-b border-slate-200 bg-white px-6 h-12 flex items-center gap-3">
+        <h1 className="text-sm font-semibold">Pipeline Demo</h1>
+        <span className="text-2xs text-slate-500 mono">
+          {SUBJECT} · KLIN-ONC-DEMO-001
+        </span>
+        <span className="ml-auto text-2xs text-slate-500">
+          Stage{" "}
+          <span className="mono text-slate-900">
+            {STAGES.findIndex((s) => s.id === stage) + 1}
+          </span>{" "}
+          / 5
+        </span>
       </header>
 
-      <main className="flex-1 max-w-6xl mx-auto p-6 w-full">
-        <StageStrip active={stage} onSelect={setStage} />
-
-        <div className="mt-6">
+      <div className="flex-1 flex min-h-0">
+        <Stepper active={stage} onSelect={setStage} />
+        <div className="flex-1 overflow-y-auto px-8 py-6 min-w-0">
           {err && (
-            <div className="text-sm text-red-600 border border-red-200 bg-red-50 rounded p-3">
+            <div className="text-sm text-sev-critical-800 bg-sev-critical-50 border border-sev-critical-300 rounded p-2 mb-3">
               {err}
             </div>
           )}
           {!data && !err && (
             <div className="space-y-3">
-              <div className="text-xs text-neutral-500">
+              <div className="text-2xs text-slate-500">
                 Loading SUBJ001 from the API…
               </div>
               <SkeletonGrid cols={6} rows={5} />
@@ -103,12 +129,12 @@ export function PipelineDemo() {
           {data && stage === "check" && <Check data={data} />}
           {data && stage === "translate" && <Translate data={data} />}
         </div>
-      </main>
+      </div>
     </div>
   );
 }
 
-function StageStrip({
+function Stepper({
   active,
   onSelect,
 }: {
@@ -116,28 +142,50 @@ function StageStrip({
   onSelect: (s: StageId) => void;
 }) {
   return (
-    <div className="grid grid-cols-5 gap-2">
-      {STAGES.map((s, i) => {
-        const on = s.id === active;
-        return (
-          <button
-            key={s.id}
-            onClick={() => onSelect(s.id)}
-            className={`relative text-left border rounded p-3 transition ${
-              on
-                ? "border-neutral-900 bg-white shadow-sm"
-                : "border-neutral-200 bg-white hover:border-neutral-400"
-            }`}
-          >
-            <div className="text-[10px] uppercase tracking-wider text-neutral-500">
-              Stage {i + 1}
-            </div>
-            <div className="text-sm font-medium mt-0.5">{s.name}</div>
-            <div className="text-xs text-neutral-500 mt-1">{s.blurb}</div>
-          </button>
-        );
-      })}
-    </div>
+    <aside className="w-60 border-r border-slate-200 bg-white shrink-0 overflow-y-auto py-3">
+      <ol className="px-2 space-y-0.5">
+        {STAGES.map((s, i) => {
+          const on = s.id === active;
+          return (
+            <li key={s.id}>
+              <button
+                onClick={() => onSelect(s.id)}
+                className={`w-full text-left rounded px-3 py-2 flex items-start gap-3 ${
+                  on
+                    ? "bg-accent-50 border border-accent-200"
+                    : "border border-transparent hover:bg-slate-50"
+                }`}
+              >
+                <span
+                  className={`mt-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full text-2xs font-semibold mono ${
+                    on
+                      ? "bg-accent-700 text-white"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {i + 1}
+                </span>
+                <span className="min-w-0">
+                  <span
+                    className={`block text-sm font-medium ${
+                      on ? "text-accent-800" : "text-slate-900"
+                    }`}
+                  >
+                    {s.name}
+                  </span>
+                  <span className="block text-2xs text-slate-500 mt-0.5 leading-snug">
+                    {s.blurb}
+                  </span>
+                  <span className="block text-2xs mono text-slate-400 mt-1">
+                    {s.layer}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </aside>
   );
 }
 
@@ -156,23 +204,26 @@ function Ingest({ data }: { data: PipelineData }) {
     .map((r) => slim(r, ["demo_issue_tag", "source_document_id"]));
 
   return (
-    <Section
-      title="Stage 1 · Ingest"
-      hint="Read eCRF rows as the coordinator entered them. Three forms feed the engine: Baseline Tumor Assessment, Follow-up Tumor Assessment, and Disease Response."
+    <StageBody
+      title="Ingest"
+      hint="Read eCRF rows as the coordinator entered them. Three forms feed the engine."
     >
       <EvidenceTable
         rows={ebSubj}
-        title={`Baseline Tumor Assessment · ${SUBJECT}`}
+        title="Baseline Tumor Assessment"
+        compact
       />
       <EvidenceTable
         rows={efSubj}
-        title={`Follow-up Tumor Assessment · ${SUBJECT} (first 6 rows)`}
+        title="Follow-up Tumor Assessment (first 6 rows)"
+        compact
       />
       <EvidenceTable
         rows={edSubj}
-        title={`Disease Response / RECIST Assessment · ${SUBJECT}`}
+        title="Disease Response / RECIST Assessment"
+        compact
       />
-    </Section>
+    </StageBody>
   );
 }
 
@@ -196,33 +247,40 @@ function Map({ data }: { data: PipelineData }) {
   );
 
   return (
-    <Section
-      title="Stage 2 · Map"
-      hint="One eCRF row becomes one TU identity row plus one TR row per measurement. Every SDTM row carries the lineage columns source_ecrf_form / source_field / source_document_id so the back-translation in Stage 5 stays grounded."
+    <StageBody
+      title="Map"
+      hint="One eCRF row becomes one TU identity row plus one TR row per measurement. Every SDTM row carries the lineage columns so the back-translation in Stage 5 stays grounded."
+      breadcrumb={`${SUBJECT} / Baseline / T01`}
     >
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <div>
-          <Label>eCRF row</Label>
-          <EvidenceTable rows={heroEcrf ? [heroEcrf] : []} />
+          <div className="kicker mb-2">eCRF row</div>
+          <EvidenceTable rows={heroEcrf ? [heroEcrf] : []} compact />
         </div>
         <div>
-          <Label>SDTM rows produced</Label>
-          <div className="space-y-2">
-            <EvidenceTable rows={heroTu ? [heroTu] : []} title="TU" />
-            <EvidenceTable rows={heroTr} title="TR" />
+          <div className="kicker mb-2">SDTM rows produced</div>
+          <div className="space-y-3">
+            <EvidenceTable
+              rows={heroTu ? [heroTu] : []}
+              title="TU"
+              compact
+            />
+            <EvidenceTable rows={heroTr} title="TR" compact />
           </div>
         </div>
       </div>
-      <div className="text-xs text-neutral-600 border-l-2 border-neutral-300 pl-3 flex items-start gap-1">
-        <span>
-          Notice the lineage columns on the right: <span className="mono">source_ecrf_form</span>
-          {" "}= "Baseline Tumor Assessment", <span className="mono">source_field</span> identifies
-          the originating eCRF cell, and <span className="mono">source_document_id</span> threads
-          back to the radiology report.
+      <div className="text-2xs text-slate-600 border-l-2 border-accent-300 pl-3 flex items-start gap-1">
+        <span className="leading-snug">
+          Notice the lineage columns on the right —{" "}
+          <span className="mono">source_ecrf_form</span>,{" "}
+          <span className="mono">source_field</span>,{" "}
+          <span className="mono">source_document_id</span>. Every Finding
+          inherits this so coordinator-facing text can address the right form
+          and field by name.
         </span>
-        <Tooltip text="This is the lineage thread. It's how a finding produced at the SDTM layer (Stage 4) can be re-expressed in eCRF language at Stage 5 — the form name and field label come from these columns." />
+        <Tooltip text="This is the lineage thread. It's how a finding produced at the SDTM layer can be re-expressed in eCRF language at Stage 5." />
       </div>
-    </Section>
+    </StageBody>
   );
 }
 
@@ -258,21 +316,21 @@ function Normalize({ data }: { data: PipelineData }) {
   }, [data]);
 
   return (
-    <Section
-      title="Stage 3 · Normalize"
-      hint="Apply CDISC controlled terminology and unit conversion. The raw eCRF values stay readable to the coordinator; the standardized values feed the rule engine."
+    <StageBody
+      title="Normalize"
+      hint="Apply CDISC controlled terminology. The raw eCRF values stay readable; the standardized values feed the rule engine."
     >
       <Diff
         label="Imaging method"
         before={examples.subjBaseline?.assessment_method_raw || "—"}
         after={examples.tuT01?.TUMETHOD || "—"}
-        scope={`SUBJ001 Baseline · ${examples.subjBaseline?.source_document_id || ""}`}
+        scope={`${SUBJECT} · Baseline · ${examples.subjBaseline?.source_document_id || ""}`}
       />
       <Diff
         label="Target response"
         before={examples.dispW16?.target_lesion_response_raw || "—"}
         after={examples.rsW16?.RSSTRESC || "—"}
-        scope={`SUBJ001 Week 16 · ${examples.dispW16?.source_document_id || ""}`}
+        scope={`${SUBJECT} · Week 16 · ${examples.dispW16?.source_document_id || ""}`}
       />
       <Diff
         label="Measurement unit"
@@ -282,11 +340,13 @@ function Normalize({ data }: { data: PipelineData }) {
             : "—"
         }
         after={
-          examples.cmRow ? `${Number(examples.cmRow.measurement_value) * 10} mm` : "—"
+          examples.cmRow
+            ? `${Number(examples.cmRow.measurement_value) * 10} mm`
+            : "—"
         }
-        scope={`SUBJ003 Week 8 · ${examples.cmRow?.source_document_id || ""}`}
+        scope={`SUBJ003 · Week 8 · ${examples.cmRow?.source_document_id || ""}`}
       />
-    </Section>
+    </StageBody>
   );
 }
 
@@ -302,20 +362,18 @@ function Diff({
   scope: string;
 }) {
   return (
-    <div className="border rounded p-3 bg-white">
-      <div className="text-xs text-neutral-500 uppercase tracking-wide">
-        {label}
-      </div>
+    <div className="panel p-3">
+      <div className="kicker">{label}</div>
       <div className="flex items-center gap-3 mt-2">
-        <div className="flex-1 mono text-sm bg-neutral-100 rounded px-2 py-1">
+        <div className="flex-1 mono text-2xs bg-slate-100 text-slate-700 rounded px-2 py-1.5">
           {before}
         </div>
-        <div className="text-neutral-400">→</div>
-        <div className="flex-1 mono text-sm bg-emerald-50 text-emerald-800 rounded px-2 py-1">
+        <div className="text-slate-400 text-xs">→</div>
+        <div className="flex-1 mono text-2xs bg-accent-50 text-accent-800 rounded px-2 py-1.5">
           {after}
         </div>
       </div>
-      <div className="text-xs text-neutral-500 mt-2">{scope}</div>
+      <div className="text-2xs text-slate-500 mt-2 mono">{scope}</div>
     </div>
   );
 }
@@ -324,41 +382,48 @@ function Diff({
 
 function Check({ data }: { data: PipelineData }) {
   const subj = data.findings.filter((f) => f.subject_id === SUBJECT);
-  const counts = {
+  const counts: Record<Severity, number> = {
     Critical: subj.filter((f) => f.severity === "Critical").length,
     Warning: subj.filter((f) => f.severity === "Warning").length,
-    "Suggested Change": subj.filter((f) => f.severity === "Suggested Change").length,
+    "Suggested Change": subj.filter((f) => f.severity === "Suggested Change")
+      .length,
   };
   return (
-    <Section
-      title="Stage 4 · Check"
-      hint="The deterministic engine runs every registered rule against the SDTM data and emits Finding objects with full lineage and evidence rows."
+    <StageBody
+      title="Check"
+      hint="The deterministic engine runs every registered rule and emits Finding objects with full lineage and evidence rows."
     >
-      <div className="grid grid-cols-3 gap-3 text-sm">
-        <Tile label="Critical" value={counts.Critical} tone="red" />
-        <Tile label="Warning" value={counts.Warning} tone="amber" />
-        <Tile label="Suggested Change" value={counts["Suggested Change"]} tone="blue" />
+      <div className="grid grid-cols-3 gap-3">
+        <Tile label="Critical" value={counts.Critical} tone="Critical" />
+        <Tile label="Warning" value={counts.Warning} tone="Warning" />
+        <Tile
+          label="Suggested"
+          value={counts["Suggested Change"]}
+          tone="Suggested Change"
+        />
       </div>
       <div>
-        <Label>{SUBJECT}'s findings</Label>
+        <div className="kicker mb-2">{SUBJECT} findings</div>
         <div className="space-y-2">
           {subj.map((f, i) => (
-            <div key={i} className="border rounded p-3 bg-white">
-              <div className="flex items-center gap-2 text-xs">
-                <SeverityBadge severity={f.severity} />
-                <span className="mono text-neutral-500">{f.rule_id}</span>
-                <span className="mono text-neutral-500">
+            <div key={i} className="panel p-3">
+              <div className="flex items-center gap-2">
+                <SeverityChip severity={f.severity} />
+                <span className="mono text-2xs text-slate-500">
+                  {f.rule_id}
+                </span>
+                <span className="mono text-2xs text-slate-500">
                   · {f.visit || "—"}
                 </span>
               </div>
-              <div className="text-sm text-neutral-700 mt-1">
+              <div className="text-sm text-slate-700 mt-1.5 leading-snug">
                 {f.raw_message}
               </div>
             </div>
           ))}
         </div>
       </div>
-    </Section>
+    </StageBody>
   );
 }
 
@@ -369,17 +434,12 @@ function Tile({
 }: {
   label: string;
   value: number;
-  tone: "red" | "amber" | "blue";
+  tone: Severity;
 }) {
-  const cls = {
-    red: "bg-red-50 border-red-200 text-red-700",
-    amber: "bg-amber-50 border-amber-200 text-amber-700",
-    blue: "bg-blue-50 border-blue-200 text-blue-700",
-  }[tone];
   return (
-    <div className={`border rounded p-3 ${cls}`}>
-      <div className="text-xs uppercase tracking-wide opacity-70">{label}</div>
-      <div className="text-2xl font-medium mono">{value}</div>
+    <div className={`panel p-3 ${SEV_BADGE_CLASS[tone]}`}>
+      <div className="kicker">{label}</div>
+      <div className="text-2xl font-semibold mono mt-1">{value}</div>
     </div>
   );
 }
@@ -388,36 +448,39 @@ function Tile({
 
 function Translate({ data }: { data: PipelineData }) {
   const hero = data.findings.find(
-    (f) =>
-      f.subject_id === SUBJECT &&
-      f.rule_id === "TR-RS-001",
+    (f) => f.subject_id === SUBJECT && f.rule_id === "TR-RS-001",
   );
-  if (!hero) return <div className="text-sm text-neutral-500">No PR-threshold finding.</div>;
+  if (!hero)
+    return (
+      <div className="text-sm text-slate-500">
+        No PR-threshold finding.
+      </div>
+    );
 
   return (
-    <Section
-      title="Stage 5 · Translate"
-      hint="The LLM (or the deterministic templater fallback) renders each Finding in eCRF terms for the coordinator. No SDTM variable names leak into the output."
+    <StageBody
+      title="Translate"
+      hint="The LLM (or the deterministic templater fallback) renders each Finding in eCRF terms. No SDTM variable names leak into the output."
     >
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="border rounded p-3 bg-neutral-100">
-          <Label>Raw engine output</Label>
-          <div className="text-sm text-neutral-800 mt-1">{hero.raw_message}</div>
-          <div className="text-xs text-neutral-500 mt-2 mono">
+        <div className="panel p-4">
+          <div className="kicker mb-1.5">Raw engine output</div>
+          <div className="text-sm text-slate-800">{hero.raw_message}</div>
+          <div className="text-2xs text-slate-500 mt-2 mono">
             rule_id: {hero.rule_id} · template: {hero.template_id}
           </div>
         </div>
-        <div className="border rounded p-3 bg-emerald-50 border-emerald-200">
-          <Label>
-            Coordinator-facing translation
-            <span className="ml-2 text-[10px] mono text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+        <div className="panel p-4 border-accent-200 bg-accent-50">
+          <div className="flex items-center kicker mb-1.5">
+            <span>Coordinator-facing translation</span>
+            <span className="ml-2 text-2xs mono text-accent-700 bg-white px-1.5 py-0.5 rounded">
               {hero.translator_source || "—"}
             </span>
             <Tooltip text="This text is rendered by Claude Haiku 4.5 from the engine's structured Finding. If the LLM is unavailable, a deterministic template renders the same content." />
-          </Label>
-          <div className="text-sm text-emerald-900 mt-1">{hero.user_message}</div>
+          </div>
+          <div className="text-sm text-accent-900">{hero.user_message}</div>
           {hero.suggested_actions.length > 0 && (
-            <ul className="text-sm text-emerald-900 mt-3 list-disc list-inside space-y-1">
+            <ul className="text-sm text-accent-900 mt-3 list-disc list-inside space-y-1">
               {hero.suggested_actions.map((a, i) => (
                 <li key={i}>{a}</li>
               ))}
@@ -426,38 +489,39 @@ function Translate({ data }: { data: PipelineData }) {
         </div>
       </div>
       <div>
-        <Label>Full finding card</Label>
+        <div className="kicker mb-2">Full finding card</div>
         <FindingCard finding={hero} />
       </div>
-    </Section>
+    </StageBody>
   );
 }
 
 // --- helpers ---------------------------------------------------------------
 
-function Section({
+function StageBody({
   title,
   hint,
+  breadcrumb,
   children,
 }: {
   title: string;
   hint: string;
+  breadcrumb?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-5xl">
       <div>
         <h2 className="text-lg font-semibold">{title}</h2>
-        <p className="text-sm text-neutral-600 mt-1 max-w-3xl">{hint}</p>
+        {breadcrumb && (
+          <div className="text-2xs text-slate-500 mono mt-0.5">
+            {breadcrumb}
+          </div>
+        )}
+        <p className="text-sm text-slate-600 mt-1 max-w-3xl leading-snug">
+          {hint}
+        </p>
       </div>
-      {children}
-    </div>
-  );
-}
-
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">
       {children}
     </div>
   );

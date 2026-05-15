@@ -1,23 +1,31 @@
 import type { Severity } from "../types";
+import { SEV_BADGE_CLASS, SEV_LABEL_SHORT, SEV_LETTER } from "../ui/tokens";
 
-const CLASS: Record<Severity, string> = {
-  Critical: "bg-red-100 text-red-800 border-red-300",
-  Warning: "bg-amber-100 text-amber-800 border-amber-300",
-  "Suggested Change": "bg-blue-100 text-blue-800 border-blue-300",
-};
+/** Compact square (letter only) — for dense table flags. */
+export function SeverityChip({ severity }: { severity: Severity }) {
+  return (
+    <span
+      className={`inline-flex items-center justify-center w-4 h-4 rounded text-2xs font-semibold border ${SEV_BADGE_CLASS[severity]}`}
+      aria-label={severity}
+      title={severity}
+    >
+      {SEV_LETTER[severity]}
+    </span>
+  );
+}
 
-const SHORT: Record<Severity, string> = {
-  Critical: "CRITICAL",
-  Warning: "WARNING",
-  "Suggested Change": "SUGGESTED",
-};
-
+/** Letter + short label — for card headers and sidebars. */
 export function SeverityBadge({ severity }: { severity: Severity }) {
   return (
     <span
-      className={`text-[10px] font-semibold tracking-wider px-1.5 py-0.5 rounded border ${CLASS[severity]}`}
+      className={`inline-flex items-center gap-1 text-2xs font-medium px-1.5 py-0.5 rounded border ${SEV_BADGE_CLASS[severity]}`}
     >
-      {SHORT[severity]}
+      <span className="w-3.5 h-3.5 rounded-sm border border-current/30 inline-flex items-center justify-center text-[10px] font-semibold">
+        {SEV_LETTER[severity]}
+      </span>
+      <span className="uppercase tracking-wider">
+        {SEV_LABEL_SHORT[severity]}
+      </span>
     </span>
   );
 }

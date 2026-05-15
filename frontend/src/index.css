@@ -1,12 +1,149 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-app: #f8fafc;
+  --bg-panel: #ffffff;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --ink: #0f172a;
+  --ink-muted: #475569;
+  --ink-subtle: #94a3b8;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
-  @apply bg-neutral-50 text-neutral-900;
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  background: var(--bg-app);
+  color: var(--ink);
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.hairline {
+  border-color: var(--border);
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow:
+    0 1px 0 0 rgba(15, 23, 42, 0.04),
+    0 1px 2px 0 rgba(15, 23, 42, 0.04);
+}
+
+.kicker {
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-subtle);
+  font-weight: 500;
+}
+
+/* Form controls: real-product feel */
+.field {
+  display: block;
+  width: 100%;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  height: 26px;
+  line-height: 1.1;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.field:hover:not(:disabled):not([readonly]) {
+  border-color: var(--border-strong);
+}
+.field:focus {
+  outline: none;
+  border-color: #4338ca;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+.field[readonly] {
+  background: #f8fafc;
+  color: var(--ink-muted);
+}
+select.field {
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' fill='none' stroke='%2364748b' stroke-width='1.5'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 22px;
+}
+.field.is-edited {
+  border-color: #4338ca;
+  background: #eef2ff;
+}
+.field.is-flagged-critical {
+  border-left: 3px solid #be123c;
+}
+.field.is-flagged-warning {
+  border-left: 3px solid #b45309;
+}
+.field.is-flagged-suggested {
+  border-left: 3px solid #0369a1;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 6px 12px;
+  height: 30px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--ink);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: var(--border-strong);
+}
+.btn-primary {
+  background: #4338ca;
+  color: #ffffff;
+  border-color: #4338ca;
+}
+.btn-primary:hover:not(:disabled) {
+  background: #3730a3;
+  border-color: #3730a3;
+}
+.btn-danger {
+  background: #be123c;
+  color: #ffffff;
+  border-color: #be123c;
+}
+.btn-danger:hover:not(:disabled) {
+  background: #9f1239;
+  border-color: #9f1239;
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }

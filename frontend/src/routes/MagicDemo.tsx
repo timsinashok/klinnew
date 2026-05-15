@@ -1,19 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchCsv, parseCsv, runEngine } from "../api";
 import { ChartTemplate } from "../components/ChartTemplate";
 import { EvidenceTable } from "../components/EvidenceTable";
-import { SeverityBadge } from "../components/SeverityBadge";
+import { SeverityBadge, SeverityChip } from "../components/SeverityBadge";
 import { SkeletonGrid } from "../components/Skeleton";
 import { Tooltip } from "../components/Tooltip";
+import {
+  clearSubject,
+  editKey,
+  loadSubject,
+  saveSubject,
+  type Persisted,
+} from "../lib/persistence";
 import type { Finding, Severity } from "../types";
+import { SEV_FIELD_CLASS, SEV_RANK } from "../ui/tokens";
 
 const SUBJECT = "SUBJ001";
 type TabId = "baseline" | "followup" | "disease";
 
 const TABS: { id: TabId; label: string; form: string }[] = [
-  { id: "baseline", label: "Baseline", form: "Baseline Tumor Assessment" },
-  { id: "followup", label: "Follow-up", form: "Follow-up Tumor Assessment" },
+  { id: "baseline", label: "Baseline Tumor Assessment", form: "Baseline Tumor Assessment" },
+  { id: "followup", label: "Follow-up Tumor Assessment", form: "Follow-up Tumor Assessment" },
   {
     id: "disease",
     label: "Disease Response",
@@ -31,44 +38,143 @@ const VISIT_ORDER = [
   "Week 48",
 ] as const;
 
-// Which eCRF columns appear in each tab's grid, and their human labels.
-const BASELINE_COLS: { key: string; label: string; w?: string }[] = [
-  { key: "lesion_number", label: "Lesion #", w: "w-20" },
-  { key: "lesion_category", label: "Category", w: "w-28" },
-  { key: "lesion_site_raw", label: "Site" },
-  { key: "lesion_location_detail", label: "Detail" },
-  { key: "measurement_value", label: "Measurement", w: "w-24" },
-  { key: "measurement_unit_raw", label: "Unit", w: "w-16" },
-  { key: "lesion_status", label: "Status", w: "w-24" },
-  { key: "assessment_method_raw", label: "Method", w: "w-40" },
+type ColType = "text" | "number" | "date" | "select";
+interface Col {
+  key: string;
+  label: string;
+  type: ColType;
+  options?: string[];
+  w?: string;
+  mono?: boolean;
+}
+
+const BASELINE_COLS: Col[] = [
+  { key: "lesion_number", label: "Lesion", type: "text", w: "w-20", mono: true },
+  {
+    key: "lesion_category",
+    label: "Category",
+    type: "select",
+    w: "w-32",
+    options: ["TARGET", "NON-TARGET"],
+  },
+  {
+    key: "lesion_site_raw",
+    label: "Site",
+    type: "select",
+    w: "w-40",
+    options: [
+      "LUNG",
+      "LIVER",
+      "LYMPH NODE",
+      "ADRENAL GLAND",
+      "BONE",
+      "PERITONEUM",
+      "PLEURA",
+      "BRAIN",
+      "OTHER",
+    ],
+  },
+  { key: "lesion_location_detail", label: "Detail", type: "text", w: "w-44" },
+  { key: "measurement_value", label: "mm", type: "number", w: "w-20" },
+  {
+    key: "measurement_unit_raw",
+    label: "Unit",
+    type: "select",
+    w: "w-16",
+    options: ["mm", "cm"],
+  },
+  {
+    key: "lesion_status",
+    label: "Status",
+    type: "select",
+    w: "w-28",
+    options: ["PRESENT", "ABSENT", "EQUIVOCAL"],
+  },
+  {
+    key: "assessment_method_raw",
+    label: "Method",
+    type: "select",
+    w: "w-40",
+    options: ["CT SCAN", "MRI", "PET", "computed tomography"],
+  },
 ];
-const FOLLOWUP_COLS: { key: string; label: string; w?: string }[] = [
-  { key: "lesion_number", label: "Lesion #", w: "w-20" },
-  { key: "lesion_category", label: "Category", w: "w-28" },
-  { key: "measurement_value", label: "Measurement", w: "w-24" },
-  { key: "measurement_unit_raw", label: "Unit", w: "w-16" },
-  { key: "lesion_status", label: "Status", w: "w-24" },
-  { key: "assessment_method_raw", label: "Method", w: "w-32" },
-  { key: "assessment_date", label: "Date", w: "w-32" },
-  { key: "new_lesions_present", label: "New lesions?", w: "w-24" },
+const FOLLOWUP_COLS: Col[] = [
+  { key: "lesion_number", label: "Lesion", type: "text", w: "w-20", mono: true },
+  {
+    key: "lesion_category",
+    label: "Category",
+    type: "select",
+    w: "w-32",
+    options: ["TARGET", "NON-TARGET", "NEW"],
+  },
+  { key: "measurement_value", label: "mm", type: "number", w: "w-20" },
+  {
+    key: "measurement_unit_raw",
+    label: "Unit",
+    type: "select",
+    w: "w-16",
+    options: ["mm", "cm"],
+  },
+  {
+    key: "lesion_status",
+    label: "Status",
+    type: "select",
+    w: "w-28",
+    options: ["PRESENT", "ABSENT", "EQUIVOCAL"],
+  },
+  {
+    key: "assessment_method_raw",
+    label: "Method",
+    type: "select",
+    w: "w-32",
+    options: ["CT SCAN", "MRI", "PET", "computed tomography"],
+  },
+  { key: "assessment_date", label: "Date", type: "date", w: "w-36" },
+  {
+    key: "new_lesions_present",
+    label: "New?",
+    type: "select",
+    w: "w-20",
+    options: ["No", "Yes"],
+  },
 ];
-const DISEASE_COLS: { key: string; label: string; w?: string }[] = [
-  { key: "response_assessment_date", label: "Date", w: "w-32" },
+const DISEASE_COLS: Col[] = [
+  {
+    key: "response_assessment_date",
+    label: "Date",
+    type: "date",
+    w: "w-36",
+  },
   {
     key: "target_lesion_response_raw",
     label: "Target response",
+    type: "select",
     w: "w-44",
+    options: ["CR", "PR", "SD", "PD", "NE", "Partial Response"],
   },
   {
     key: "non_target_lesion_response_raw",
     label: "Non-target response",
+    type: "select",
     w: "w-44",
+    options: ["CR", "NON-CR/NON-PD", "PD", "NE"],
   },
-  { key: "new_lesion_response_raw", label: "New lesion response", w: "w-44" },
-  { key: "overall_response_raw", label: "Overall response", w: "w-44" },
+  {
+    key: "new_lesion_response_raw",
+    label: "New lesion response",
+    type: "select",
+    w: "w-44",
+    options: ["NO NEW LESIONS", "NEW LESIONS PRESENT"],
+  },
+  {
+    key: "overall_response_raw",
+    label: "Overall response",
+    type: "select",
+    w: "w-44",
+    options: ["CR", "PR", "SD", "PD", "NE", "Partial Response"],
+  },
 ];
 
-// Map a rule_id to the eCRF column(s) where its inline indicator should land.
 const RULE_TO_FIELDS: Record<string, string[]> = {
   "TR-RS-001": ["target_lesion_response_raw", "overall_response_raw"],
   "TR-RS-003": ["overall_response_raw", "non_target_lesion_response_raw"],
@@ -83,13 +189,23 @@ const RULE_TO_FIELDS: Record<string, string[]> = {
 };
 
 function fieldsForRule(f: Finding): string[] {
-  // Standardization findings know their own field from lineage; trust it.
   if (f.rule_id === "TR-002") return [f.lineage.field];
   return RULE_TO_FIELDS[f.rule_id] || [f.lineage.field];
 }
 
-function severityRank(s: Severity): number {
-  return s === "Critical" ? 3 : s === "Warning" ? 2 : 1;
+function findingKey(f: Finding): string {
+  return `${f.rule_id}|${f.subject_id}|${f.visit ?? ""}|${f.lineage.field}`;
+}
+
+function isResolvedByEdit(
+  f: Finding,
+  edits: Record<string, string>,
+): boolean {
+  if (f.rule_id !== "TR-002") return false;
+  const canonical = (f.template_params as { canonical?: string }).canonical;
+  if (!canonical) return false;
+  const v = edits[editKey(f.visit, f.lineage.field)];
+  return v != null && v.trim() === canonical.trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -106,32 +222,68 @@ export function MagicDemo() {
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
   const [resolved, setResolved] = useState<Set<string>>(new Set());
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [showSubmit, setShowSubmit] = useState(false);
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
 
-  const reset = async () => {
+  const load = useCallback(async (fresh = false) => {
     setLoading(true);
     setFindings(null);
-    setAcknowledged(new Set());
-    setResolved(new Set());
+    setShowSubmit(false);
     try {
       const [eb, ef, ed] = await Promise.all([
         fetchCsv("ecrf_baseline.csv").then(parseCsv),
         fetchCsv("ecrf_followup.csv").then(parseCsv),
         fetchCsv("ecrf_disease_response.csv").then(parseCsv),
       ]);
-      setBaseline(eb.filter((r) => r.subject_id === SUBJECT));
-      setFollowup(ef.filter((r) => r.subject_id === SUBJECT));
-      setDisease(ed.filter((r) => r.subject_id === SUBJECT));
+      let ebRows = eb.filter((r) => r.subject_id === SUBJECT);
+      let efRows = ef.filter((r) => r.subject_id === SUBJECT);
+      let edRows = ed.filter((r) => r.subject_id === SUBJECT);
+
+      const persisted: Persisted = fresh
+        ? { edits: {}, acknowledged: [], resolved: [] }
+        : loadSubject(SUBJECT);
+      ebRows = applyEdits(ebRows, persisted.edits);
+      efRows = applyEdits(efRows, persisted.edits);
+      edRows = applyEdits(edRows, persisted.edits);
+      setBaseline(ebRows);
+      setFollowup(efRows);
+      setDisease(edRows);
+      setEdits(persisted.edits);
+      setAcknowledged(new Set(persisted.acknowledged));
+      setResolved(new Set(persisted.resolved));
       setErr(null);
     } catch (e) {
       setErr(String(e));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    reset();
-  }, []);
+    load();
+  }, [load]);
+
+  // Persist on every state change.
+  useEffect(() => {
+    saveSubject(SUBJECT, {
+      edits,
+      acknowledged: Array.from(acknowledged),
+      resolved: Array.from(resolved),
+    });
+  }, [edits, acknowledged, resolved]);
+
+  // Auto-resolve when an edit matches the canonical value for a TR-002 finding.
+  useEffect(() => {
+    if (!findings) return;
+    setResolved((prev) => {
+      const next = new Set(prev);
+      for (const f of findings) {
+        if (isResolvedByEdit(f, edits)) next.add(findingKey(f));
+      }
+      return next;
+    });
+  }, [edits, findings]);
 
   const subjectFindings = useMemo(() => {
     if (!findings) return [];
@@ -140,7 +292,7 @@ export function MagicDemo() {
       .filter((f) => !resolved.has(findingKey(f)));
   }, [findings, resolved]);
 
-  const counts = {
+  const counts: Record<Severity, number> = {
     Critical: subjectFindings.filter((f) => f.severity === "Critical").length,
     Warning: subjectFindings.filter((f) => f.severity === "Warning").length,
     "Suggested Change": subjectFindings.filter(
@@ -154,6 +306,7 @@ export function MagicDemo() {
 
   const runChecks = async () => {
     setRunning(true);
+    lastTriggerRef.current = document.activeElement as HTMLElement | null;
     try {
       const r = await runEngine(true);
       setFindings(r.findings);
@@ -165,99 +318,157 @@ export function MagicDemo() {
     }
   };
 
+  const writeField = (
+    form: TabId,
+    visit: string,
+    lesionNumber: string | null,
+    field: string,
+    value: string,
+  ) => {
+    const setter =
+      form === "baseline"
+        ? setBaseline
+        : form === "followup"
+          ? setFollowup
+          : setDisease;
+    setter((rows) =>
+      rows.map((r) => {
+        if (r.visit !== visit) return r;
+        if (lesionNumber && r.lesion_number !== lesionNumber) return r;
+        return { ...r, [field]: value };
+      }),
+    );
+    setEdits((prev) => ({ ...prev, [editKey(visit, field)]: value }));
+  };
+
   const autoFix = (f: Finding) => {
-    const visit = f.visit;
-    const field = f.lineage.field;
-    const canonical = (f.template_params?.canonical as string) || "";
-    const apply = (rows: Record<string, string>[]) =>
-      rows.map((r) =>
-        r.subject_id === SUBJECT && r.visit === visit && r[field] !== undefined
-          ? { ...r, [field]: canonical }
-          : r,
-      );
-    if (f.lineage.form.startsWith("Baseline")) setBaseline(apply);
-    else if (f.lineage.form.startsWith("Follow-up")) setFollowup(apply);
-    else if (f.lineage.form.startsWith("Disease")) setDisease(apply);
-    setResolved((prev) => new Set(prev).add(findingKey(f)));
+    const canonical = (f.template_params as { canonical?: string }).canonical;
+    if (!canonical) return;
+    const form: TabId = f.lineage.form.startsWith("Baseline")
+      ? "baseline"
+      : f.lineage.form.startsWith("Follow-up")
+        ? "followup"
+        : "disease";
+    writeField(form, f.visit || "", null, f.lineage.field, canonical);
+    setResolved((p) => new Set(p).add(findingKey(f)));
+    closeDrawer();
+  };
+
+  const openDrawer = (f: Finding, trigger?: HTMLElement | null) => {
+    lastTriggerRef.current = trigger || null;
+    setSelectedFinding(f);
+  };
+  const closeDrawer = () => {
     setSelectedFinding(null);
+    setTimeout(() => lastTriggerRef.current?.focus(), 0);
+  };
+
+  const reset = async () => {
+    clearSubject(SUBJECT);
+    await load(true);
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50 flex flex-col">
-      <Header
-        unresolvedCritical={unresolvedCritical}
+    <div className="flex flex-col h-full">
+      <SubHeader
+        tab={tab}
+        onTab={setTab}
         running={running}
         onRun={runChecks}
         onReset={reset}
+        onSubmit={() => setShowSubmit(true)}
         hasFindings={findings !== null}
+        unresolvedCritical={unresolvedCritical}
+        counts={counts}
+        editCount={Object.keys(edits).length}
       />
-      <main className="flex-1 max-w-7xl mx-auto p-6 w-full grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-        <div>
-          <TabStrip active={tab} onSelect={setTab} />
-          {loading && (
-            <div className="mt-4 space-y-3">
-              <div className="text-xs text-neutral-500">Loading SUBJ001…</div>
-              <SkeletonGrid cols={8} rows={4} />
-            </div>
-          )}
-          {err && (
-            <div className="text-sm text-red-600 mt-6 border border-red-200 bg-red-50 rounded p-3">
-              {err}
-            </div>
-          )}
-          {!loading && tab === "baseline" && (
-            <BaselineForm
-              rows={baseline}
-              findings={subjectFindings}
-              onSelect={setSelectedFinding}
-            />
-          )}
-          {!loading && tab === "followup" && (
-            <VisitGroupedForm
-              rows={followup}
-              cols={FOLLOWUP_COLS}
-              findings={subjectFindings.filter((f) =>
-                f.lineage.form.startsWith("Follow-up"),
-              )}
-              onSelect={setSelectedFinding}
-            />
-          )}
-          {!loading && tab === "disease" && (
-            <VisitGroupedForm
-              rows={disease}
-              cols={DISEASE_COLS}
-              findings={subjectFindings.filter((f) =>
-                f.lineage.form.startsWith("Disease"),
-              )}
-              onSelect={setSelectedFinding}
-              singleRowPerVisit
-            />
-          )}
-        </div>
-        <Sidebar
-          counts={counts}
-          findings={subjectFindings}
-          onSelect={setSelectedFinding}
-          ran={findings !== null}
-        />
-      </main>
+
+      <div className="flex-1 overflow-y-auto px-6 pb-8 pt-4">
+        {err && (
+          <div className="mb-4 text-sm text-sev-critical-800 bg-sev-critical-50 border border-sev-critical-300 rounded p-2">
+            {err}
+          </div>
+        )}
+        {loading && (
+          <div className="space-y-3">
+            <div className="text-2xs text-slate-500">Loading SUBJ001…</div>
+            <SkeletonGrid cols={8} rows={5} />
+          </div>
+        )}
+        {!loading && tab === "baseline" && (
+          <FormTable
+            heading="Baseline Tumor Assessment"
+            subheading={`Subject ${SUBJECT} · ${baseline[0]?.assessment_date || ""}`}
+            cols={BASELINE_COLS}
+            rows={baseline}
+            findings={subjectFindings.filter((f) =>
+              f.lineage.form.startsWith("Baseline"),
+            )}
+            edits={edits}
+            visit={(r) => r.visit || ""}
+            onEdit={(r, col, v) =>
+              writeField("baseline", r.visit, r.lesion_number, col.key, v)
+            }
+            onSelect={openDrawer}
+          />
+        )}
+        {!loading && tab === "followup" && (
+          <VisitGroupedTable
+            cols={FOLLOWUP_COLS}
+            rows={followup}
+            findings={subjectFindings.filter((f) =>
+              f.lineage.form.startsWith("Follow-up"),
+            )}
+            edits={edits}
+            onEdit={(r, col, v) =>
+              writeField("followup", r.visit, r.lesion_number, col.key, v)
+            }
+            onSelect={openDrawer}
+          />
+        )}
+        {!loading && tab === "disease" && (
+          <VisitGroupedTable
+            cols={DISEASE_COLS}
+            rows={disease}
+            findings={subjectFindings.filter((f) =>
+              f.lineage.form.startsWith("Disease"),
+            )}
+            edits={edits}
+            singleRowPerVisit
+            onEdit={(r, col, v) =>
+              writeField("disease", r.visit, null, col.key, v)
+            }
+            onSelect={openDrawer}
+          />
+        )}
+      </div>
 
       {selectedFinding && (
         <Drawer
           finding={selectedFinding}
-          onClose={() => setSelectedFinding(null)}
+          onClose={closeDrawer}
           onAcknowledge={() => {
             setAcknowledged((p) =>
               new Set(p).add(findingKey(selectedFinding)),
             );
-            setSelectedFinding(null);
+            closeDrawer();
           }}
           onAutoFix={() => autoFix(selectedFinding)}
           onResolve={() => {
             setResolved((p) => new Set(p).add(findingKey(selectedFinding)));
-            setSelectedFinding(null);
+            closeDrawer();
           }}
           acknowledged={acknowledged.has(findingKey(selectedFinding))}
+        />
+      )}
+
+      {showSubmit && (
+        <SubmitModal
+          counts={counts}
+          editCount={Object.keys(edits).length}
+          acknowledgedCount={acknowledged.size}
+          resolvedCount={resolved.size}
+          onClose={() => setShowSubmit(false)}
         />
       )}
     </div>
@@ -266,135 +477,146 @@ export function MagicDemo() {
 
 // ---------------------------------------------------------------------------
 
-function Header({
-  unresolvedCritical,
+function SubHeader({
+  tab,
+  onTab,
   running,
   onRun,
   onReset,
+  onSubmit,
   hasFindings,
+  unresolvedCritical,
+  counts,
+  editCount,
 }: {
-  unresolvedCritical: number;
+  tab: TabId;
+  onTab: (t: TabId) => void;
   running: boolean;
   onRun: () => void;
   onReset: () => void;
+  onSubmit: () => void;
   hasFindings: boolean;
+  unresolvedCritical: number;
+  counts: Record<Severity, number>;
+  editCount: number;
 }) {
-  const blocked = unresolvedCritical > 0;
+  const submitBlocked = unresolvedCritical > 0 || !hasFindings;
   return (
-    <header className="border-b bg-white px-6 py-3 flex items-center gap-4">
-      <Link to="/" className="text-sm text-neutral-500 hover:text-neutral-900">
-        ← Home
-      </Link>
-      <div className="text-sm font-semibold">Magic Demo</div>
-      <div className="text-xs text-neutral-500 mono">
-        Subject:&nbsp;<span className="text-neutral-900">SUBJ001</span>
+    <div className="border-b border-slate-200 bg-white">
+      <div className="flex items-center px-6 h-12 gap-4">
+        <div className="text-sm font-semibold">Magic Demo</div>
+        <span className="text-2xs text-slate-500 mono">
+          SUBJ001 · KLIN-ONC-DEMO-001
+        </span>
+        <div className="ml-auto flex items-center gap-3">
+          {hasFindings && (
+            <div className="hidden md:flex items-center gap-1.5 text-2xs text-slate-500 mr-2">
+              <Counter
+                label="C"
+                count={counts.Critical}
+                tone="critical"
+              />
+              <Counter label="W" count={counts.Warning} tone="warning" />
+              <Counter
+                label="S"
+                count={counts["Suggested Change"]}
+                tone="suggested"
+              />
+              {editCount > 0 && (
+                <span className="ml-2 text-2xs text-accent-700 bg-accent-50 border border-accent-200 px-1.5 py-0.5 rounded mono">
+                  {editCount} edits
+                </span>
+              )}
+            </div>
+          )}
+          <Tooltip text="Translations are generated by Claude Haiku 4.5 with a deterministic fallback. The deterministic engine is unaffected." />
+          <button className="btn" onClick={onReset}>
+            Reset
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={onRun}
+            disabled={running}
+          >
+            {running ? "Running…" : "Run consistency check"}
+          </button>
+          <button
+            className={`btn ${submitBlocked ? "" : "btn-primary"}`}
+            disabled={submitBlocked}
+            onClick={onSubmit}
+            title={
+              unresolvedCritical
+                ? `${unresolvedCritical} critical finding(s) must be acknowledged or resolved.`
+                : ""
+            }
+          >
+            Submit
+          </button>
+        </div>
       </div>
-      <div className="ml-auto flex items-center gap-2">
-        <Tooltip text="LLM-generated messages and suggested actions are produced by Claude Haiku 4.5 from the deterministic engine output. Deterministic templates render the same content if the API is unavailable." />
-        <button
-          onClick={onReset}
-          className="text-sm text-neutral-600 hover:text-neutral-900 px-2 py-1.5"
-        >
-          Reset
-        </button>
-        <button
-          onClick={onRun}
-          disabled={running}
-          className="text-sm bg-neutral-900 text-white px-3 py-1.5 rounded hover:bg-neutral-700 disabled:opacity-50"
-        >
-          {running ? "Running…" : "Run consistency check"}
-        </button>
-        <button
-          disabled={blocked || !hasFindings}
-          title={
-            blocked
-              ? `${unresolvedCritical} critical finding(s) must be flagged or fixed first.`
-              : ""
-          }
-          className={`text-sm px-3 py-1.5 rounded ${
-            blocked || !hasFindings
-              ? "bg-neutral-200 text-neutral-400 cursor-not-allowed"
-              : "bg-emerald-600 text-white hover:bg-emerald-700"
-          }`}
-        >
-          Submit
-        </button>
+      <div className="flex gap-0 px-6">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => onTab(t.id)}
+            className={`text-sm px-3 py-2 -mb-px border-b-2 ${
+              t.id === tab
+                ? "border-accent-700 text-accent-700 font-medium"
+                : "border-transparent text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
-    </header>
+    </div>
   );
 }
 
-function TabStrip({
-  active,
-  onSelect,
+function Counter({
+  label,
+  count,
+  tone,
 }: {
-  active: TabId;
-  onSelect: (t: TabId) => void;
+  label: string;
+  count: number;
+  tone: "critical" | "warning" | "suggested";
 }) {
+  const cls = {
+    critical:
+      "bg-sev-critical-50 text-sev-critical-700 border-sev-critical-300",
+    warning: "bg-sev-warning-50 text-sev-warning-700 border-sev-warning-300",
+    suggested:
+      "bg-sev-suggested-50 text-sev-suggested-700 border-sev-suggested-300",
+  }[tone];
   return (
-    <div className="flex gap-1 border-b">
-      {TABS.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => onSelect(t.id)}
-          className={`text-sm px-4 py-2 -mb-px border-b-2 ${
-            t.id === active
-              ? "border-neutral-900 text-neutral-900 font-medium"
-              : "border-transparent text-neutral-500 hover:text-neutral-900"
-          }`}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
+    <span
+      className={`inline-flex items-center gap-1 text-2xs mono px-1.5 py-0.5 rounded border ${cls}`}
+    >
+      <span className="font-semibold">{label}</span>
+      {count}
+    </span>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-function BaselineForm({
-  rows,
-  findings,
-  onSelect,
-}: {
-  rows: Record<string, string>[];
-  findings: Finding[];
-  onSelect: (f: Finding) => void;
-}) {
-  const baselineFindings = findings.filter((f) =>
-    f.lineage.form.startsWith("Baseline"),
-  );
-
-  return (
-    <div className="mt-4 space-y-3">
-      <SectionHeader
-        title="Baseline Tumor Assessment"
-        date={rows[0]?.assessment_date}
-        method={rows[0]?.assessment_method_raw}
-      />
-      <FieldGrid
-        cols={BASELINE_COLS}
-        rows={rows}
-        findings={baselineFindings}
-        onSelect={onSelect}
-        rowKey={(r) => `${r.lesion_number}`}
-      />
-    </div>
-  );
-}
-
-function VisitGroupedForm({
-  rows,
+function VisitGroupedTable({
   cols,
+  rows,
   findings,
-  onSelect,
+  edits,
   singleRowPerVisit,
+  onEdit,
+  onSelect,
 }: {
+  cols: Col[];
   rows: Record<string, string>[];
-  cols: { key: string; label: string; w?: string }[];
   findings: Finding[];
-  onSelect: (f: Finding) => void;
+  edits: Record<string, string>;
   singleRowPerVisit?: boolean;
+  onEdit: (r: Record<string, string>, col: Col, v: string) => void;
+  onSelect: (f: Finding, trigger?: HTMLElement | null) => void;
 }) {
   const byVisit = new Map<string, Record<string, string>[]>();
   for (const r of rows) {
@@ -409,269 +631,197 @@ function VisitGroupedForm({
   );
 
   return (
-    <div className="mt-4 space-y-4">
+    <div className="space-y-5">
       {visits.map((v) => {
         const visitRows = byVisit.get(v)!;
-        const visitFindings = findings.filter(
-          (f) => (f.visit || "") === v,
-        );
+        const visitFindings = findings.filter((f) => (f.visit || "") === v);
+        const flagged = visitFindings.length > 0;
         return (
-          <div key={v}>
-            <SectionHeader
-              title={v}
-              date={
-                visitRows[0]?.assessment_date ||
-                visitRows[0]?.response_assessment_date
-              }
-              method={visitRows[0]?.assessment_method_raw}
-              flagCount={visitFindings.length}
-            />
-            <FieldGrid
-              cols={cols}
-              rows={singleRowPerVisit ? visitRows.slice(0, 1) : visitRows}
-              findings={visitFindings}
-              onSelect={onSelect}
-              rowKey={(r) =>
-                singleRowPerVisit
-                  ? `${r.visit}`
-                  : `${r.visit}|${r.lesion_number}`
-              }
-            />
-          </div>
+          <FormTable
+            key={v}
+            heading={v}
+            subheading={`${visitRows[0]?.assessment_date || visitRows[0]?.response_assessment_date || ""} · ${visitRows[0]?.assessment_method_raw || ""}`}
+            cols={cols}
+            rows={singleRowPerVisit ? visitRows.slice(0, 1) : visitRows}
+            findings={visitFindings}
+            edits={edits}
+            visit={() => v}
+            onEdit={onEdit}
+            onSelect={onSelect}
+            flagged={flagged}
+          />
         );
       })}
     </div>
   );
 }
 
-function SectionHeader({
-  title,
-  date,
-  method,
-  flagCount,
-}: {
-  title: string;
-  date?: string;
-  method?: string;
-  flagCount?: number;
-}) {
-  return (
-    <div className="flex items-baseline gap-3">
-      <div className="text-sm font-medium">{title}</div>
-      {date && (
-        <div className="text-xs text-neutral-500 mono">{date}</div>
-      )}
-      {method && (
-        <div className="text-xs text-neutral-500">{method}</div>
-      )}
-      {flagCount && flagCount > 0 ? (
-        <div className="ml-auto text-xs text-red-700">
-          {flagCount} finding{flagCount === 1 ? "" : "s"}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function FieldGrid({
+function FormTable({
+  heading,
+  subheading,
   cols,
   rows,
   findings,
+  edits,
+  visit,
+  onEdit,
   onSelect,
-  rowKey,
+  flagged,
 }: {
-  cols: { key: string; label: string; w?: string }[];
+  heading: string;
+  subheading?: string;
+  cols: Col[];
   rows: Record<string, string>[];
   findings: Finding[];
-  onSelect: (f: Finding) => void;
-  rowKey: (r: Record<string, string>) => string;
+  edits: Record<string, string>;
+  visit: (r: Record<string, string>) => string;
+  onEdit: (r: Record<string, string>, col: Col, v: string) => void;
+  onSelect: (f: Finding, trigger?: HTMLElement | null) => void;
+  flagged?: boolean;
 }) {
   return (
-    <div className="border rounded bg-white overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="bg-neutral-50 border-b">
-          <tr>
-            {cols.map((c) => (
-              <th
-                key={c.key}
-                className={`text-left px-3 py-2 font-medium text-xs text-neutral-600 ${c.w || ""}`}
-              >
-                {c.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={rowKey(r)} className="border-b last:border-b-0">
-              {cols.map((c) => {
-                const cellFindings = findings.filter((f) => {
-                  if ((f.visit || "") !== (r.visit || "")) return false;
-                  if (r.lesion_number && f.template_params) {
-                    // For Baseline, only show on the matching lesion when known.
-                    const lf =
-                      (f.template_params as { lesion_id?: string })?.lesion_id;
-                    if (lf && lf !== r.lesion_number) return false;
-                  }
-                  return fieldsForRule(f).includes(c.key);
-                });
-                return (
-                  <td key={c.key} className="px-3 py-2 align-top">
-                    <FieldInput value={r[c.key] ?? ""} />
-                    {cellFindings.length > 0 && (
-                      <FieldFlags findings={cellFindings} onSelect={onSelect} />
-                    )}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function FieldInput({ value }: { value: string }) {
-  return (
-    <input
-      readOnly
-      value={value}
-      className="mono text-xs w-full bg-neutral-50 border border-neutral-200 rounded px-2 py-1"
-    />
-  );
-}
-
-function FieldFlags({
-  findings,
-  onSelect,
-}: {
-  findings: Finding[];
-  onSelect: (f: Finding) => void;
-}) {
-  const top = [...findings].sort(
-    (a, b) => severityRank(b.severity) - severityRank(a.severity),
-  );
-  return (
-    <div className="mt-1 flex flex-wrap gap-1">
-      {top.map((f, i) => (
-        <button
-          key={i}
-          onClick={() => onSelect(f)}
-          className={`text-[10px] mono px-1.5 py-0.5 rounded border ${flagClass(
-            f.severity,
-          )}`}
-          title={f.user_message}
-        >
-          {f.severity === "Critical"
-            ? "!"
-            : f.severity === "Warning"
-              ? "⚑"
-              : "↻"}
-          &nbsp;{f.rule_id}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function flagClass(s: Severity): string {
-  return s === "Critical"
-    ? "bg-red-100 border-red-300 text-red-800 hover:bg-red-200"
-    : s === "Warning"
-      ? "bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-200"
-      : "bg-blue-100 border-blue-300 text-blue-800 hover:bg-blue-200";
-}
-
-// ---------------------------------------------------------------------------
-
-function Sidebar({
-  counts,
-  findings,
-  onSelect,
-  ran,
-}: {
-  counts: Record<Severity, number>;
-  findings: Finding[];
-  onSelect: (f: Finding) => void;
-  ran: boolean;
-}) {
-  return (
-    <aside className="space-y-4">
-      <div className="border rounded bg-white p-3">
-        <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">
-          Consistency summary
-        </div>
-        {!ran ? (
-          <div className="text-sm text-neutral-500">
-            Click <strong>Run consistency check</strong> to evaluate this form.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <CountRow label="Critical" value={counts.Critical} tone="red" />
-            <CountRow label="Warning" value={counts.Warning} tone="amber" />
-            <CountRow
-              label="Suggested"
-              value={counts["Suggested Change"]}
-              tone="blue"
-            />
-          </div>
+    <section>
+      <div className="flex items-baseline gap-3 mb-2">
+        <h2 className="text-sm font-semibold">{heading}</h2>
+        {subheading && (
+          <span className="text-2xs text-slate-500 mono">{subheading}</span>
+        )}
+        {flagged && (
+          <span className="ml-auto text-2xs text-sev-critical-700">
+            {findings.length} finding{findings.length === 1 ? "" : "s"}
+          </span>
         )}
       </div>
-      {ran && findings.length > 0 && (
-        <div className="border rounded bg-white p-3">
-          <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">
-            All findings
-          </div>
-          <ul className="space-y-1.5">
-            {[...findings]
-              .sort(
-                (a, b) => severityRank(b.severity) - severityRank(a.severity),
-              )
-              .map((f, i) => (
-                <li key={i}>
-                  <button
-                    onClick={() => onSelect(f)}
-                    className="w-full text-left text-xs hover:bg-neutral-50 rounded px-2 py-1.5 border"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <SeverityBadge severity={f.severity} />
-                      <span className="mono text-neutral-500">{f.rule_id}</span>
-                    </div>
-                    <div className="text-neutral-700 mt-0.5">
-                      {f.visit ? `${f.visit} · ` : ""}
-                      {f.user_message.slice(0, 70)}
-                      {f.user_message.length > 70 ? "…" : ""}
-                    </div>
-                  </button>
-                </li>
+      <div className="panel overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50">
+              {cols.map((c) => (
+                <th
+                  key={c.key}
+                  className={`text-left px-3 py-1.5 font-medium kicker ${c.w || ""}`}
+                >
+                  {c.label}
+                </th>
               ))}
-          </ul>
-        </div>
-      )}
-    </aside>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const v = visit(r);
+              return (
+                <tr
+                  key={`${v}|${r.lesion_number || ""}|${r.response_assessment_date || ""}`}
+                  className="border-b border-slate-100 last:border-b-0 align-top"
+                >
+                  {cols.map((c) => {
+                    const cellFindings = findings.filter((f) => {
+                      if ((f.visit || "") !== v) return false;
+                      const lf = (
+                        f.template_params as { lesion_id?: string }
+                      ).lesion_id;
+                      if (lf && r.lesion_number && lf !== r.lesion_number)
+                        return false;
+                      return fieldsForRule(f).includes(c.key);
+                    });
+                    const topSev = topSeverity(cellFindings);
+                    const isEdited =
+                      edits[editKey(v, c.key)] !== undefined;
+                    return (
+                      <td key={c.key} className="px-3 py-2">
+                        <Field
+                          col={c}
+                          value={r[c.key] ?? ""}
+                          edited={isEdited}
+                          severity={topSev}
+                          onChange={(val) => onEdit(r, c, val)}
+                        />
+                        {cellFindings.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {cellFindings.map((f, i) => (
+                              <button
+                                key={i}
+                                onClick={(e) =>
+                                  onSelect(f, e.currentTarget)
+                                }
+                                className="inline-flex items-center gap-1 text-2xs hover:opacity-80"
+                                title={f.user_message}
+                              >
+                                <SeverityChip severity={f.severity} />
+                                <span className="mono text-slate-500">
+                                  {f.rule_id}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
-function CountRow({
-  label,
+function topSeverity(fs: Finding[]): Severity | null {
+  if (fs.length === 0) return null;
+  return [...fs].sort(
+    (a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity],
+  )[0].severity;
+}
+
+function Field({
+  col,
   value,
-  tone,
+  edited,
+  severity,
+  onChange,
 }: {
-  label: string;
-  value: number;
-  tone: "red" | "amber" | "blue";
+  col: Col;
+  value: string;
+  edited: boolean;
+  severity: Severity | null;
+  onChange: (v: string) => void;
 }) {
-  const cls = {
-    red: "bg-red-50 border-red-200 text-red-700",
-    amber: "bg-amber-50 border-amber-200 text-amber-700",
-    blue: "bg-blue-50 border-blue-200 text-blue-700",
-  }[tone];
+  const classes = [
+    "field",
+    col.mono ? "" : "font-sans",
+    edited ? "is-edited" : "",
+    severity ? SEV_FIELD_CLASS[severity] : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (col.type === "select" && col.options) {
+    const options = col.options.includes(value) || !value
+      ? col.options
+      : [...col.options, value];
+    return (
+      <select
+        className={classes}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    );
+  }
   return (
-    <div className={`flex items-center justify-between border rounded px-2 py-1 ${cls}`}>
-      <span className="text-xs uppercase tracking-wide">{label}</span>
-      <span className="mono text-base font-medium">{value}</span>
-    </div>
+    <input
+      type={col.type}
+      className={classes}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
   );
 }
 
@@ -692,55 +842,75 @@ function Drawer({
   onResolve: () => void;
   acknowledged: boolean;
 }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    // Move focus into the drawer.
+    const first = ref.current?.querySelector<HTMLElement>(
+      "button, [href], input, select, textarea",
+    );
+    first?.focus();
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const sev = finding.severity;
   return (
-    <div
-      className="fixed inset-0 bg-black/40 z-40 flex justify-end"
-      onClick={onClose}
+    <aside
+      ref={ref}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${sev} finding ${finding.rule_id}`}
+      className="fixed top-11 right-0 bottom-0 w-[480px] border-l border-slate-200 bg-white shadow-xl z-40 flex flex-col"
     >
-      <div
-        className="bg-white w-full max-w-2xl h-full overflow-y-auto p-5 space-y-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2">
-          <SeverityBadge severity={sev} />
-          <span className="mono text-xs text-neutral-500">
-            {finding.rule_id}
-          </span>
-          <button
-            onClick={onClose}
-            className="ml-auto text-sm text-neutral-500 hover:text-neutral-900"
-          >
-            close
-          </button>
-        </div>
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-200">
+        <SeverityBadge severity={sev} />
+        <span className="mono text-2xs text-slate-500">
+          {finding.rule_id}
+        </span>
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="ml-auto text-slate-400 hover:text-slate-900 text-sm w-6 h-6 inline-flex items-center justify-center rounded hover:bg-slate-100"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         <div>
           <div className="text-sm font-medium">
             <span className="mono">{finding.subject_id}</span>
             {finding.visit && (
-              <span className="mono text-neutral-500">
-                {" · "}
-                {finding.visit}
-              </span>
+              <span className="mono text-slate-500"> · {finding.visit}</span>
             )}
           </div>
-          <div className="text-xs text-neutral-500 mt-0.5">
-            eCRF: <span className="mono">{finding.lineage.form}</span>
-            {" / "}
-            <span className="mono">{finding.lineage.field}</span>
+          <div className="text-2xs text-slate-500 mt-0.5">
+            <span className="kicker">eCRF</span>{" "}
+            <span className="mono text-slate-700">
+              {finding.lineage.form}
+            </span>{" "}
+            ·{" "}
+            <span className="mono text-slate-700">
+              {finding.lineage.field}
+            </span>{" "}
+            ·{" "}
+            <span className="mono text-slate-500">
+              {finding.lineage.source_doc}
+            </span>
           </div>
         </div>
 
-        <div className="bg-neutral-50 border rounded p-3 text-sm text-neutral-800">
+        <div className="text-sm text-slate-800 leading-snug">
           {finding.user_message}
         </div>
 
         {finding.suggested_actions.length > 0 && (
           <div>
-            <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
-              Suggested actions
-            </div>
-            <ul className="text-sm text-neutral-700 space-y-1 list-disc list-inside">
+            <div className="kicker mb-1.5">Suggested actions</div>
+            <ul className="text-sm text-slate-700 space-y-1 list-disc list-inside">
               {finding.suggested_actions.map((a, i) => (
                 <li key={i}>{a}</li>
               ))}
@@ -753,53 +923,121 @@ function Drawer({
         )}
 
         {Object.entries(finding.evidence_rows).map(([d, rows]) => (
-          <EvidenceTable key={d} title={d} rows={rows} />
+          <EvidenceTable key={d} title={d} rows={rows} compact />
         ))}
 
-        <div className="flex gap-2 pt-2 border-t">
-          {sev === "Suggested Change" ? (
-            <button
-              onClick={onAutoFix}
-              className="bg-blue-600 text-white text-sm px-3 py-1.5 rounded hover:bg-blue-700"
-            >
-              Auto-fix
-            </button>
-          ) : sev === "Warning" ? (
-            <button
-              onClick={onAcknowledge}
-              disabled={acknowledged}
-              className="bg-amber-600 text-white text-sm px-3 py-1.5 rounded hover:bg-amber-700 disabled:opacity-50"
-            >
-              {acknowledged ? "Acknowledged" : "Acknowledge"}
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={onAcknowledge}
-                disabled={acknowledged}
-                className="bg-red-600 text-white text-sm px-3 py-1.5 rounded hover:bg-red-700 disabled:opacity-50"
-              >
-                {acknowledged ? "Flagged" : "Flag for investigator"}
-              </button>
-              <button
-                onClick={onResolve}
-                className="border text-sm px-3 py-1.5 rounded hover:bg-neutral-50"
-              >
-                Mark resolved
-              </button>
-            </>
-          )}
-        </div>
         {finding.citation && (
-          <div className="text-xs italic text-neutral-500">
+          <div className="text-2xs italic text-slate-500 border-t border-slate-200 pt-3">
             {finding.citation}
           </div>
         )}
+      </div>
+
+      <div className="border-t border-slate-200 px-5 py-3 flex flex-wrap gap-2 bg-slate-50">
+        {sev === "Suggested Change" && (
+          <button className="btn btn-primary" onClick={onAutoFix}>
+            Auto-fix and resolve
+          </button>
+        )}
+        {sev === "Warning" && (
+          <button
+            className="btn btn-primary"
+            disabled={acknowledged}
+            onClick={onAcknowledge}
+          >
+            {acknowledged ? "Acknowledged" : "Acknowledge"}
+          </button>
+        )}
+        {sev === "Critical" && (
+          <>
+            <button
+              className="btn btn-danger"
+              disabled={acknowledged}
+              onClick={onAcknowledge}
+            >
+              {acknowledged ? "Flagged" : "Flag for investigator"}
+            </button>
+            <button className="btn" onClick={onResolve}>
+              Mark resolved
+            </button>
+          </>
+        )}
+        <button className="btn ml-auto" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function SubmitModal({
+  counts,
+  editCount,
+  acknowledgedCount,
+  resolvedCount,
+  onClose,
+}: {
+  counts: Record<Severity, number>;
+  editCount: number;
+  acknowledgedCount: number;
+  resolvedCount: number;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center">
+      <div className="panel max-w-md w-full p-5 space-y-3">
+        <div className="text-sm font-semibold">Submit visit data</div>
+        <div className="text-sm text-slate-600">
+          Review the changes before submission. In production this would post
+          to the EDC.
+        </div>
+        <dl className="text-sm space-y-1 mono">
+          <Row k="Edits applied" v={editCount} />
+          <Row k="Findings resolved" v={resolvedCount} />
+          <Row k="Findings acknowledged" v={acknowledgedCount} />
+          <Row k="Open Critical" v={counts.Critical} />
+          <Row k="Open Warning" v={counts.Warning} />
+          <Row k="Open Suggested" v={counts["Suggested Change"]} />
+        </dl>
+        <div className="flex justify-end gap-2 pt-2">
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" onClick={onClose}>
+            Confirm submit
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-function findingKey(f: Finding): string {
-  return `${f.rule_id}|${f.subject_id}|${f.visit ?? ""}|${f.lineage.field}`;
+function Row({ k, v }: { k: string; v: number }) {
+  return (
+    <div className="flex justify-between">
+      <dt className="text-slate-500">{k}</dt>
+      <dd>{v}</dd>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function applyEdits(
+  rows: Record<string, string>[],
+  edits: Record<string, string>,
+): Record<string, string>[] {
+  if (!edits || Object.keys(edits).length === 0) return rows;
+  return rows.map((r) => {
+    const v = r.visit || "";
+    const next: Record<string, string> = { ...r };
+    for (const [k, val] of Object.entries(edits)) {
+      const [evisit, field] = k.split("|");
+      if (evisit !== v) continue;
+      if (field in next) next[field] = val;
+    }
+    return next;
+  });
 }
