@@ -373,7 +373,18 @@ export function MagicDemo() {
     )[0];
   }, [openFindings]);
 
-  const hasOpenCritical = openFindings.some((f) => f.severity === "Critical");
+  // Flagging an issue notifies the investigator but does NOT clear it for
+  // submission. The visit can only be submitted when the underlying data
+  // has been changed and re-run shows the engine no longer fires the
+  // critical finding (so it drops out of visitFindings altogether).
+  const hasCriticalForVisit = visitFindings.some(
+    (f) => f.severity === "Critical",
+  );
+  const flaggedCriticalForVisit = visitFindings.some(
+    (f) =>
+      f.severity === "Critical" &&
+      dispositions.get(findingKey(f)) === "flagged",
+  );
 
   // Map of visit -> highest open severity for this subject (used by trajectory + RunBar hint).
   const findingsByVisit = useMemo(() => {
@@ -562,7 +573,7 @@ export function MagicDemo() {
     visitSubmitted ||
     (!isScreening && !visitIngested) ||
     (!isScreening && !ran) ||
-    hasOpenCritical ||
+    hasCriticalForVisit ||
     missingRequiredFields.length > 0;
 
   const runCheckForThisVisit = async () => {
@@ -792,6 +803,7 @@ export function MagicDemo() {
           (f) => f.severity !== "Critical",
         ).length}
         missingFields={missingRequiredFields}
+        flaggedCriticalAwaitingFix={flaggedCriticalForVisit}
         onSubmit={submitVisit}
         onReset={resetSubject}
       />
@@ -1759,36 +1771,37 @@ function FlagInvestigatorModal({
             </span>
           </div>
           {typing ? (
-            <div className="field w-full min-h-[12rem] text-sm whitespace-pre-wrap leading-relaxed p-3 bg-stone-50">
+            <div className="field w-full min-h-[14rem] text-sm whitespace-pre-wrap break-words leading-relaxed p-3 bg-stone-50 overflow-y-auto">
               {shown}
               <span className="inline-block w-1.5 h-3.5 bg-slate-400 ml-0.5 align-middle animate-pulse" />
             </div>
           ) : (
             <textarea
-              className="field w-full min-h-[12rem] text-sm leading-relaxed p-3"
+              className="field w-full min-h-[14rem] text-sm leading-relaxed p-3 break-words"
+              style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
           )}
         </div>
         <div className="px-5 py-3 border-t border-stone-200 flex items-center gap-3">
-          <span className="text-2xs text-slate-500">
-            Sends as a query in the investigator's queue. Visit can be
-            submitted once the query is open.
+          <span className="text-2xs text-slate-500 flex-1 min-w-0">
+            Sends as a query in the investigator's queue. Submission stays
+            blocked until the data is updated and the check re-run.
           </span>
           <button
-            className="btn ml-auto"
+            className="text-2xs text-slate-500 hover:text-slate-900 px-2 py-1"
             onClick={onClose}
             disabled={typing}
           >
             Cancel
           </button>
           <button
-            className="btn btn-primary"
+            className="bg-accent-600 hover:bg-accent-700 disabled:bg-stone-300 disabled:cursor-not-allowed text-white text-2xs font-medium px-3 py-1.5 rounded"
             onClick={() => onSend(text)}
             disabled={typing || !text.trim()}
           >
-            {typing ? "Drafting…" : "Send to investigator →"}
+            {typing ? "Drafting…" : "Send →"}
           </button>
         </div>
       </div>
@@ -1798,30 +1811,28 @@ function FlagInvestigatorModal({
 
 function buildFlagDraft(f: Finding): string {
   const subj = f.subject_id;
-  const visit = f.visit ? ` at ${f.visit}` : "";
-  const form = f.lineage.form ? `${f.lineage.form}` : "the affected form";
+  const visit = f.visit || "this visit";
+  const form = f.lineage.form || "the affected form";
   const field = f.lineage.field ? ` (${f.lineage.field})` : "";
-  const headline = ruleHeadline(f);
-  const summary = (f.user_message || "").trim();
+  const summary = (f.user_message || "").trim().replace(/\s+/g, " ");
   const actions =
     f.suggested_actions.length > 0
-      ? `\n\nSuggested next steps:\n${f.suggested_actions
+      ? "\n\nSuggested next steps:\n" +
+        f.suggested_actions
           .slice(0, 3)
-          .map((a) => `  • ${a}`)
-          .join("\n")}`
+          .map((a) => `• ${a.replace(/\s+/g, " ").trim()}`)
+          .join("\n")
       : "";
-  return `Investigator query — ${headline}
-
-Subject ${subj}${visit}
-Form: ${form}${field}
-
-${summary}${actions}
-
-Please review and advise on the correct value before this visit is
-submitted. Flagging from the site as the data on file does not reconcile
-with the rest of the visit.
-
-— A. Patel, Site coordinator`;
+  // Paragraphs separated by blank lines; no hard mid-sentence newlines, so
+  // the textarea wraps naturally at any panel width.
+  return (
+    `Investigator query — ${subj} · ${visit}\n` +
+    `Form: ${form}${field}\n\n` +
+    `${summary}${actions}\n\n` +
+    `Please review and advise on the correct value before this visit is submitted. ` +
+    `Flagging from the site because the data on file does not reconcile with the rest of the visit.\n\n` +
+    `— A. Patel, Site coordinator`
+  );
 }
 
 function DispositionedSummary({
@@ -2257,6 +2268,7 @@ function SubmitFooter({
   openCriticalCount,
   openOtherCount,
   missingFields,
+  flaggedCriticalAwaitingFix,
   onSubmit,
   onReset,
 }: {
@@ -2268,6 +2280,7 @@ function SubmitFooter({
   openCriticalCount: number;
   openOtherCount: number;
   missingFields: string[];
+  flaggedCriticalAwaitingFix: boolean;
   onSubmit: () => void;
   onReset: () => void;
 }) {
@@ -2285,12 +2298,19 @@ function SubmitFooter({
       </span>
     );
   else if (!ran) msg = `Run a consistency check on ${visit} before submitting.`;
+  else if (flaggedCriticalAwaitingFix && openCriticalCount === 0)
+    msg = (
+      <span className="text-sev-critical-700">
+        Issue sent to investigator. Update the related field and re-run the
+        consistency check to clear it for submission.
+      </span>
+    );
   else if (openCriticalCount > 0)
     msg = (
       <span className="text-sev-critical-700">
         {openCriticalCount} critical finding{openCriticalCount === 1 ? "" : "s"}
         {" "}
-        must be resolved or flagged before submitting {visit}.
+        must be resolved before submitting {visit}.
       </span>
     );
   else if (openOtherCount > 0)
