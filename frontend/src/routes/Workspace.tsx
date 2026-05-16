@@ -81,6 +81,9 @@ export function Workspace() {
           counts={counts}
           loading={findings === null}
           elapsedMs={elapsedMs}
+          labRows={stats?.lab_rows ?? 0}
+          abnormalLabRows={stats?.abnormal_lab_rows ?? 0}
+          sourceDocs={stats?.source_doc_count ?? 0}
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-5">
@@ -155,7 +158,9 @@ function KpiStrip({
   visitsPlanned,
   counts,
   loading,
-  elapsedMs,
+  labRows,
+  abnormalLabRows,
+  sourceDocs,
 }: {
   totalSubjects: number;
   visitsDone: number;
@@ -163,10 +168,13 @@ function KpiStrip({
   counts: Record<Severity, number>;
   loading: boolean;
   elapsedMs: number | null;
+  labRows: number;
+  abnormalLabRows: number;
+  sourceDocs: number;
 }) {
   const total = counts.Critical + counts.Warning + counts["Suggested Change"];
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
       <Kpi
         label="Subjects enrolled"
         value={String(totalSubjects)}
@@ -179,6 +187,16 @@ function KpiStrip({
         bar={visitsPlanned > 0 ? visitsDone / visitsPlanned : 0}
       />
       <Kpi
+        label="Lab rows"
+        value={`${labRows}`}
+        sub={`${abnormalLabRows} abnormal`}
+      />
+      <Kpi
+        label="Source documents"
+        value={`${sourceDocs}`}
+        sub="rad / lab / path / md"
+      />
+      <Kpi
         label="Open findings"
         value={loading ? "—" : String(total)}
         sub={
@@ -188,11 +206,6 @@ function KpiStrip({
             <Dot tone="suggested" /> {counts["Suggested Change"]}
           </span>
         }
-      />
-      <Kpi
-        label="Last engine run"
-        value={loading ? "—" : "moments ago"}
-        sub={elapsedMs !== null ? `${elapsedMs} ms · 11 rules` : "—"}
       />
     </div>
   );
@@ -271,6 +284,7 @@ function SubjectRoster({
           <tr className="bg-stone-50 border-b border-stone-200">
             <th className="text-left px-4 py-2 kicker">Subject</th>
             <th className="text-left px-4 py-2 kicker">Status</th>
+            <th className="text-left px-4 py-2 kicker">Eligibility</th>
             <th className="text-left px-4 py-2 kicker">Visit progress</th>
             <th className="text-left px-4 py-2 kicker">Open findings</th>
             <th className="text-left px-4 py-2 kicker">Last visit</th>
@@ -281,7 +295,7 @@ function SubjectRoster({
           {loading &&
             Array.from({ length: 5 }).map((_, i) => (
               <tr key={i} className="border-b border-stone-100">
-                {Array.from({ length: 6 }).map((__, j) => (
+                {Array.from({ length: 7 }).map((__, j) => (
                   <td key={j} className="px-4 py-3">
                     <div className="h-3 bg-stone-100 rounded animate-pulse" />
                   </td>
@@ -296,6 +310,10 @@ function SubjectRoster({
               const sug = fs.filter(
                 (f) => f.severity === "Suggested Change",
               ).length;
+              const eligibilityIssues = fs.filter(
+                (f) => f.rule_id === "DM-001" || f.rule_id === "DM-002",
+              );
+              const eligible = eligibilityIssues.length === 0;
               return (
                 <tr
                   key={s.subject_id}
@@ -313,6 +331,24 @@ function SubjectRoster({
                       }`}
                     >
                       {s.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      title={
+                        eligible
+                          ? "DM-001 + DM-002 pass"
+                          : eligibilityIssues
+                              .map((f) => f.rule_id)
+                              .join(", ")
+                      }
+                      className={`text-2xs px-1.5 py-0.5 rounded border ${
+                        eligible
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                          : "border-sev-critical-300 bg-sev-critical-50 text-sev-critical-700"
+                      }`}
+                    >
+                      {eligible ? "✓ Eligible" : `✗ ${eligibilityIssues.length}`}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -480,14 +516,14 @@ function FindingsStream({
 
 function ActionTiles() {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       <Link
         to="/magic"
         className="panel p-5 hover:border-accent-300 transition group"
       >
         <div className="kicker">Coordinator view</div>
-        <div className="text-lg font-semibold mt-1.5 group-hover:text-accent-700">
-          Visit entry for SUBJ001 Week 16
+        <div className="text-base font-semibold mt-1.5 group-hover:text-accent-700">
+          Visit entry
         </div>
         <p className="text-sm text-slate-600 mt-1.5 leading-snug">
           Open the eCRF as a site coordinator would: pre-filled with this
@@ -503,16 +539,32 @@ function ActionTiles() {
         className="panel p-5 hover:border-accent-300 transition group"
       >
         <div className="kicker">How a finding gets caught</div>
-        <div className="text-lg font-semibold mt-1.5 group-hover:text-accent-700">
+        <div className="text-base font-semibold mt-1.5 group-hover:text-accent-700">
           Pipeline trace
         </div>
         <p className="text-sm text-slate-600 mt-1.5 leading-snug">
-          Walk one finding from the coordinator's entry, through SDTM
-          mapping with lineage, through the rule that fired, to the message
-          the coordinator saw. The trace works for any of the 11 findings.
+          Walk one finding from coordinator entry, through SDTM with
+          lineage, through the rule that fired, to the message we showed
+          the coordinator.
         </p>
         <div className="text-sm text-accent-700 mt-3 font-medium">
           Open the trace →
+        </div>
+      </Link>
+      <Link
+        to="/sources"
+        className="panel p-5 hover:border-accent-300 transition group"
+      >
+        <div className="kicker">What fed the eCRF</div>
+        <div className="text-base font-semibold mt-1.5 group-hover:text-accent-700">
+          Source documents
+        </div>
+        <p className="text-sm text-slate-600 mt-1.5 leading-snug">
+          Radiology, central lab, pathology, and clinic notes. See the
+          extracted text and the SDTM fields each document populated.
+        </p>
+        <div className="text-sm text-accent-700 mt-3 font-medium">
+          Browse 80 documents →
         </div>
       </Link>
     </div>

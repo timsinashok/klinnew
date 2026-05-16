@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { fetchCsv, parseCsv, runEngine } from "../api";
 import { SeverityChip } from "../components/SeverityBadge";
 import { SkeletonGrid } from "../components/Skeleton";
@@ -16,6 +16,10 @@ interface CsvData {
 }
 
 export function PipelineDemo() {
+  const [params, setParams] = useSearchParams();
+  const view: "trace" | "overview" =
+    params.get("view") === "overview" ? "overview" : "trace";
+
   const [csv, setCsv] = useState<CsvData | null>(null);
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -85,35 +89,61 @@ export function PipelineDemo() {
     [orderedFindings, selected],
   );
 
+  const setView = (v: "trace" | "overview") => {
+    const next = new URLSearchParams(params);
+    if (v === "overview") next.set("view", "overview");
+    else next.delete("view");
+    setParams(next);
+  };
+
   return (
     <div className="min-h-full bg-[#fafaf8]">
       <header className="border-b border-stone-200 bg-white">
         <div className="max-w-6xl mx-auto px-8 py-5">
           <div className="kicker mb-1">How a finding gets caught</div>
           <h1 className="text-[24px] leading-tight serif font-medium">
-            Pipeline trace
+            Pipeline
           </h1>
           <p className="text-sm text-slate-600 mt-1.5 max-w-2xl">
-            Walk one finding from the coordinator's entry through SDTM
-            mapping with lineage, through the deterministic rule that fired,
-            to the plain-English message we showed the coordinator.
+            {view === "trace"
+              ? "Walk one finding from coordinator entry through SDTM mapping, through the deterministic rule that fired, to the plain-English message we showed the coordinator."
+              : "The 6-step demo flow: protocol upload through actionable UI, with one subject traced end-to-end."}
           </p>
-          <div className="mt-4 flex items-center gap-3">
-            <label className="text-2xs uppercase tracking-wider text-slate-500 font-medium">
-              Trace
-            </label>
-            <select
-              className="field w-[420px] h-9 text-sm"
-              value={selected ?? ""}
-              onChange={(e) => setSelected(e.target.value)}
-            >
-              {orderedFindings.map((f) => (
-                <option key={findingKey(f)} value={findingKey(f)}>
-                  [{f.severity[0]}] {f.rule_id} · {f.subject_id}{" "}
-                  {f.visit ? `· ${f.visit}` : ""}
-                </option>
+          <div className="mt-4 flex items-center gap-3 flex-wrap">
+            <div className="inline-flex border border-stone-300 rounded overflow-hidden">
+              {(["overview", "trace"] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={`text-sm px-3 py-1.5 border-r last:border-r-0 border-stone-300 ${
+                    view === v
+                      ? "bg-accent-50 text-accent-700 font-medium"
+                      : "bg-white text-slate-600 hover:bg-stone-50"
+                  }`}
+                >
+                  {v === "overview" ? "Overview" : "Single-finding trace"}
+                </button>
               ))}
-            </select>
+            </div>
+            {view === "trace" && (
+              <>
+                <label className="text-2xs uppercase tracking-wider text-slate-500 font-medium">
+                  Trace
+                </label>
+                <select
+                  className="field w-[420px] h-9 text-sm"
+                  value={selected ?? ""}
+                  onChange={(e) => setSelected(e.target.value)}
+                >
+                  {orderedFindings.map((f) => (
+                    <option key={findingKey(f)} value={findingKey(f)}>
+                      [{f.severity[0]}] {f.rule_id} · {f.subject_id}{" "}
+                      {f.visit ? `· ${f.visit}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -126,11 +156,225 @@ export function PipelineDemo() {
         )}
         {!csv || !current ? (
           <SkeletonGrid cols={6} rows={5} />
+        ) : view === "overview" ? (
+          <Overview findings={findings ?? []} />
         ) : (
           <Trace finding={current} csv={csv} />
         )}
       </div>
     </div>
+  );
+}
+
+function Overview({ findings }: { findings: Finding[] }) {
+  const subj = "SUBJ001";
+  const heroForSubject = findings.find(
+    (f) =>
+      f.subject_id === subj &&
+      f.rule_id === "TR-RS-001" &&
+      f.visit === "Week 16",
+  );
+  const counts = {
+    Critical: findings.filter((f) => f.severity === "Critical").length,
+    Warning: findings.filter((f) => f.severity === "Warning").length,
+    "Suggested Change": findings.filter(
+      (f) => f.severity === "Suggested Change",
+    ).length,
+  };
+  return (
+    <div className="relative">
+      <div className="absolute left-[18px] top-3 bottom-3 w-px bg-stone-200" />
+      <OverviewStep
+        n={1}
+        title="Protocol upload"
+        sub="Synthetic protocol KLIN-ONC-DEMO-001 is parsed; 12 deterministic checks are derived from its 7 sections."
+        cta={{ to: "/protocol", label: "Open protocol view →" }}
+      >
+        <div className="mono text-2xs text-slate-600">
+          DM-001 · DM-002 · TU-001 · TU-002 · TU-TR-001 · TR-002 · TR-003 ·
+          TR-004 · TR-RS-001 · TU/TR-RS-002 · TR-RS-003 · LB-ADLB-001
+        </div>
+      </OverviewStep>
+      <OverviewStep
+        n={2}
+        title="Source document upload"
+        sub="80 radiology, lab, pathology, and clinic-note documents extracted with line-level traceability."
+        cta={{ to: "/sources", label: "Browse 80 documents →" }}
+      >
+        <div className="grid grid-cols-4 gap-1.5 text-2xs">
+          {["RAD · 35", "LAB · 35", "PATH · 5", "MD · 5"].map((s) => (
+            <span
+              key={s}
+              className="mono text-slate-700 bg-stone-100 rounded px-2 py-1 text-center"
+            >
+              {s}
+            </span>
+          ))}
+        </div>
+      </OverviewStep>
+      <OverviewStep
+        n={3}
+        title="eCRF fill"
+        sub="Extracted facts populate eCRF_DM, eCRF_LB, eCRF_Baseline, eCRF_Followup, and eCRF_Disease_Response. Coordinator confirms each visit."
+        cta={{ to: `/magic?subject=${subj}`, label: "Open coordinator view →" }}
+      >
+        <div className="text-2xs text-slate-600">
+          eCRF rows fed by source docs · DM · LB · TU · TR · RS
+        </div>
+      </OverviewStep>
+      <OverviewStep
+        n={4}
+        title="Standardize to SDTM"
+        sub="Raw eCRF terms map to CDISC controlled terminology — units harmonized, response codes canonicalized, methods rolled up."
+      >
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-2xs">
+          <Diff label="Method" before="computed tomography" after="CT SCAN" />
+          <Diff label="Response" before="Partial Response" after="PR" />
+          <Diff label="Unit" before="2.0 cm" after="20.0 mm" />
+        </div>
+      </OverviewStep>
+      <OverviewStep
+        n={5}
+        title="Layered checks"
+        sub="Engine runs across DM / LB / TU / TR / RS — basic, intra-domain, cross-domain, cross-visit, and medical-analysis layers."
+      >
+        <div className="flex items-center gap-2 flex-wrap">
+          <SevTile tone="critical" n={counts.Critical} label="Critical" />
+          <SevTile tone="warning" n={counts.Warning} label="Warning" />
+          <SevTile
+            tone="suggested"
+            n={counts["Suggested Change"]}
+            label="Suggested"
+          />
+        </div>
+      </OverviewStep>
+      <OverviewStep
+        n={6}
+        title="Actionable UI"
+        sub="Findings translated to coordinator language; Critical blocks save, Warning queries, Suggested standardizes."
+        last
+      >
+        {heroForSubject ? (
+          <div className="panel border-accent-200 bg-accent-50/40 p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <SeverityChip severity={heroForSubject.severity} />
+              <span className="mono text-2xs text-slate-500">
+                {heroForSubject.rule_id} · {heroForSubject.subject_id} ·{" "}
+                {heroForSubject.visit}
+              </span>
+            </div>
+            <div className="text-sm text-slate-800 leading-snug">
+              {heroForSubject.user_message}
+            </div>
+            <div className="mt-2">
+              <Link
+                to={`/magic?subject=${subj}&visit=Week+16`}
+                className="text-2xs text-accent-700 hover:text-accent-800"
+              >
+                See it in the eCRF →
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="text-2xs italic text-slate-500">
+            Run the engine first to see the translated message.
+          </div>
+        )}
+      </OverviewStep>
+    </div>
+  );
+}
+
+function OverviewStep({
+  n,
+  title,
+  sub,
+  cta,
+  last,
+  children,
+}: {
+  n: number;
+  title: string;
+  sub: string;
+  cta?: { to: string; label: string };
+  last?: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    <section className={`pl-12 relative ${last ? "" : "pb-8"}`}>
+      <div className="absolute left-0 top-0 w-10 flex justify-center">
+        <span className="w-9 h-9 inline-flex items-center justify-center bg-white border border-stone-300 rounded-full text-sm font-semibold mono text-slate-700 shadow-sm">
+          {n}
+        </span>
+      </div>
+      <div className="pb-3 flex items-baseline gap-3 flex-wrap">
+        <h2 className="text-base font-semibold leading-tight">{title}</h2>
+        {cta && (
+          <Link
+            to={cta.to}
+            className="text-2xs text-accent-700 hover:text-accent-800 font-medium ml-auto"
+          >
+            {cta.label}
+          </Link>
+        )}
+      </div>
+      <p className="text-2xs text-slate-500 mb-3 leading-snug max-w-2xl">
+        {sub}
+      </p>
+      {children && <div>{children}</div>}
+    </section>
+  );
+}
+
+function Diff({
+  label,
+  before,
+  after,
+}: {
+  label: string;
+  before: string;
+  after: string;
+}) {
+  return (
+    <div className="panel p-2">
+      <div className="kicker mb-1">{label}</div>
+      <div className="flex items-center gap-2">
+        <span className="mono text-2xs bg-stone-100 text-slate-700 rounded px-1.5 py-0.5 flex-1 truncate">
+          {before}
+        </span>
+        <span className="text-slate-400 text-2xs">→</span>
+        <span className="mono text-2xs bg-accent-50 text-accent-800 rounded px-1.5 py-0.5 flex-1 truncate">
+          {after}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SevTile({
+  tone,
+  n,
+  label,
+}: {
+  tone: "critical" | "warning" | "suggested";
+  n: number;
+  label: string;
+}) {
+  const cls = {
+    critical:
+      "border-sev-critical-300 bg-sev-critical-50 text-sev-critical-700",
+    warning:
+      "border-sev-warning-300 bg-sev-warning-50 text-sev-warning-700",
+    suggested:
+      "border-sev-suggested-300 bg-sev-suggested-50 text-sev-suggested-700",
+  }[tone];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-2xs px-2 py-1 rounded border mono ${cls}`}
+    >
+      <span className="font-semibold">{n}</span>
+      <span>{label}</span>
+    </span>
   );
 }
 

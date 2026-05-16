@@ -257,10 +257,33 @@ def compute_stats() -> dict:
             }
         )
 
+    lb = data.get("lb")
+    lab_rows = int(len(lb)) if lb is not None else 0
+    abnormal_lab_rows = 0
+    if lb is not None and "LBNRIND" in lb.columns:
+        abnormal_lab_rows = int(
+            (~lb["LBNRIND"].astype(str).str.upper().isin(["NORMAL", ""])).sum()
+        )
+
+    domains_present = sorted(
+        [
+            d.upper()
+            for d in ("tu", "tr", "rs", "dm", "lb")
+            if data.get(d) is not None and not data.get(d).empty
+        ]
+    )
+
+    source_docs = data.get("source_documents")
+    source_doc_count = int(len(source_docs)) if source_docs is not None else 0
+
     return {
         "study": _STUDY,
         "subjects": out_subjects,
         "total_subjects": len(out_subjects),
         "total_visits_completed": total_visits,
         "total_visits_planned": len(out_subjects) * len(_PLANNED_VISITS),
+        "lab_rows": lab_rows,
+        "abnormal_lab_rows": abnormal_lab_rows,
+        "domains_present": domains_present,
+        "source_doc_count": source_doc_count,
     }

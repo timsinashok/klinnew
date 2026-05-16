@@ -56,6 +56,10 @@ export interface Stats {
   total_subjects: number;
   total_visits_completed: number;
   total_visits_planned: number;
+  lab_rows: number;
+  abnormal_lab_rows: number;
+  domains_present: string[];
+  source_doc_count: number;
 }
 
 export interface ProtocolCheck {
