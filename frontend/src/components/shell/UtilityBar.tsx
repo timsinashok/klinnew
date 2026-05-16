@@ -11,7 +11,7 @@ export function UtilityBar({ llmOn }: Props) {
   const study = getStudy(sid) || DEMO_STUDY;
   return (
     <header className="h-12 border-b border-stone-200 bg-white flex items-center px-4 gap-3 shrink-0">
-      <Link to="/studies" className="hover:opacity-80">
+      <Link to="/" className="hover:opacity-80" title="Back to landing">
         <Wordmark />
       </Link>
       <Sep />

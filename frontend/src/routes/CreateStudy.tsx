@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { fetchProtocol } from "../api";
 import { Wordmark } from "../components/shell/Wordmark";
 import {
@@ -23,7 +23,6 @@ const PROGRESS_LINES = [
 ];
 
 export function CreateStudy() {
-  const navigate = useNavigate();
   const [stage, setStage] = useState<Stage>("form");
   const [name, setName] = useState("");
   const [sponsor, setSponsor] = useState("");
@@ -93,13 +92,15 @@ export function CreateStudy() {
     };
     saveStudy(study);
     setCurrentStudy(study.id);
-    navigate("/");
+    window.location.assign("/platform");
   };
 
   return (
     <div className="min-h-screen bg-[#fafaf8] flex flex-col">
       <header className="bg-white border-b border-stone-200 px-6 h-14 flex items-center">
-        <Wordmark />
+        <Link to="/" className="hover:opacity-80" title="Back to landing">
+          <Wordmark />
+        </Link>
         <span className="ml-3 text-2xs text-slate-500 mono">
           / Studies / New
         </span>

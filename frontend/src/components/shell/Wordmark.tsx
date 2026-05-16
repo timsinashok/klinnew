@@ -1,10 +1,16 @@
 interface Props {
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
   withMark?: boolean;
 }
 
-export function Wordmark({ size = "sm", withMark = true }: Props) {
-  const px = size === "md" ? 28 : 22;
+export function Wordmark({ size = "md", withMark = true }: Props) {
+  const px = size === "lg" ? 32 : size === "md" ? 28 : 22;
+  const textClass =
+    size === "lg"
+      ? "text-xl font-semibold tracking-tight"
+      : size === "md"
+        ? "text-[17px] font-semibold tracking-tight"
+        : "text-[15px] font-semibold tracking-tight";
   return (
     <div className="inline-flex items-center gap-2">
       {withMark && (
@@ -17,13 +23,7 @@ export function Wordmark({ size = "sm", withMark = true }: Props) {
           style={{ objectFit: "cover", objectPosition: "left center" }}
         />
       )}
-      <span
-        className={
-          size === "md"
-            ? "text-lg font-semibold tracking-tight"
-            : "text-[15px] font-semibold tracking-tight"
-        }
-      >
+      <span className={textClass}>
         klin <span className="text-accent-600">AI</span>
       </span>
     </div>

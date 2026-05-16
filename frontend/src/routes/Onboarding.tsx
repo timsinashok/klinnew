@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { fetchProtocol } from "../api";
 import { Wordmark } from "../components/shell/Wordmark";
 import { markProtocolUploaded } from "../lib/persistence";
@@ -23,7 +22,6 @@ export function Onboarding() {
   const [statusLine, setStatusLine] = useState(PROGRESS_LINES[0]);
   const [protocol, setProtocol] = useState<ProtocolResponse | null>(null);
   const [filename, setFilename] = useState<string>("");
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (stage !== "extracting") return;
@@ -64,13 +62,17 @@ export function Onboarding() {
 
   const onContinue = () => {
     markProtocolUploaded();
-    navigate("/");
+    // Use a full assign so the AppShell + PlatformRouter remount and
+    // re-read localStorage cleanly.
+    window.location.assign("/platform");
   };
 
   return (
     <div className="min-h-screen bg-[#fafaf8] flex flex-col">
-      <header className="bg-white border-b border-stone-200 px-6 h-12 flex items-center">
-        <Wordmark />
+      <header className="bg-white border-b border-stone-200 px-6 h-14 flex items-center">
+        <a href="/" className="hover:opacity-80" title="Back to landing">
+          <Wordmark />
+        </a>
       </header>
       <main className="flex-1 flex items-center justify-center px-6 py-10">
         <div className="w-full max-w-2xl">

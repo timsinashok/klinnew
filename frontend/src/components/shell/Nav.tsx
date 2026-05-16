@@ -1,11 +1,11 @@
 import { NavLink } from "react-router-dom";
 
 const ITEMS: { to: string; label: string; end?: boolean }[] = [
-  { to: "/", label: "Workspace", end: true },
-  { to: "/protocol", label: "Protocol" },
-  { to: "/sources", label: "Source documents" },
-  { to: "/magic", label: "Visit entry" },
-  { to: "/pipeline", label: "Pipeline trace" },
+  { to: "/platform", label: "Workspace", end: true },
+  { to: "/platform/protocol", label: "Protocol" },
+  { to: "/platform/sources", label: "Source documents" },
+  { to: "/platform/visit", label: "Visit entry" },
+  { to: "/platform/pipeline", label: "Pipeline trace" },
 ];
 
 export function Nav() {

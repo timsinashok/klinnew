@@ -4,7 +4,6 @@ import { isProtocolUploaded } from "./lib/persistence";
 import {
   DEMO_STUDY,
   getCurrentStudyId,
-  hasVisitedApp,
   setCurrentStudy,
 } from "./lib/studies";
 import { CreateStudy } from "./routes/CreateStudy";
@@ -17,39 +16,19 @@ import { Sources } from "./routes/Sources";
 import { Studies } from "./routes/Studies";
 import { Workspace } from "./routes/Workspace";
 
-function RootRouter() {
-  const visited = hasVisitedApp();
+function PlatformRouter() {
   const currentStudy = getCurrentStudyId();
-
-  // First-ever visit → landing page.
-  if (!visited) return <Landing />;
-
-  // Inside the app but no study selected → studies dashboard.
   if (!currentStudy) return <Navigate to="/studies" replace />;
-
-  // Demo study needs the protocol "uploaded" once (carries over from
-  // earlier sessions). Other studies auto-skip the gate because the
-  // create-study flow already simulated the extraction.
   if (currentStudy === DEMO_STUDY.id && !isProtocolUploaded()) {
     return <Onboarding />;
   }
-
   return <Workspace />;
 }
 
-function StudyRoute({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  // Sub-routes that operate on the "current study". If none, send to picker.
+function StudyRoute({ children }: { children: React.ReactNode }) {
   const currentStudy = getCurrentStudyId();
-  if (!hasVisitedApp()) {
-    // Initialise the first-ever visit so /magic deep links still work.
-    return <Navigate to="/welcome" replace />;
-  }
   if (!currentStudy) {
-    setCurrentStudy(DEMO_STUDY.id); // safe default
+    setCurrentStudy(DEMO_STUDY.id);
   }
   return <>{children}</>;
 }
@@ -58,14 +37,15 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/welcome" element={<Landing />} />
+        <Route path="/" element={<Landing />} />
+        <Route path="/welcome" element={<Navigate to="/" replace />} />
         <Route path="/studies" element={<Studies />} />
         <Route path="/studies/new" element={<CreateStudy />} />
         <Route path="/setup" element={<Onboarding />} />
         <Route element={<AppShell />}>
-          <Route path="/" element={<RootRouter />} />
+          <Route path="/platform" element={<PlatformRouter />} />
           <Route
-            path="/protocol"
+            path="/platform/protocol"
             element={
               <StudyRoute>
                 <Protocol />
@@ -73,7 +53,7 @@ export default function App() {
             }
           />
           <Route
-            path="/sources"
+            path="/platform/sources"
             element={
               <StudyRoute>
                 <Sources />
@@ -81,7 +61,7 @@ export default function App() {
             }
           />
           <Route
-            path="/magic"
+            path="/platform/visit"
             element={
               <StudyRoute>
                 <MagicDemo />
@@ -89,15 +69,32 @@ export default function App() {
             }
           />
           <Route
-            path="/pipeline"
+            path="/platform/pipeline"
             element={
               <StudyRoute>
                 <PipelineDemo />
               </StudyRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Legacy / shorter aliases — useful for old bookmarks. */}
+          <Route
+            path="/protocol"
+            element={<Navigate to="/platform/protocol" replace />}
+          />
+          <Route
+            path="/sources"
+            element={<Navigate to="/platform/sources" replace />}
+          />
+          <Route
+            path="/magic"
+            element={<Navigate to="/platform/visit" replace />}
+          />
+          <Route
+            path="/pipeline"
+            element={<Navigate to="/platform/pipeline" replace />}
+          />
         </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

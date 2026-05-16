@@ -188,7 +188,7 @@ function Overview({ findings }: { findings: Finding[] }) {
         n={1}
         title="Protocol upload"
         sub="Synthetic protocol KLIN-ONC-DEMO-001 is parsed; 12 deterministic checks are derived from its 7 sections."
-        cta={{ to: "/protocol", label: "Open protocol view →" }}
+        cta={{ to: "/platform/protocol", label: "Open protocol view →" }}
       >
         <div className="mono text-2xs text-slate-600">
           DM-001 · DM-002 · TU-001 · TU-002 · TU-TR-001 · TR-002 · TR-003 ·
@@ -199,7 +199,7 @@ function Overview({ findings }: { findings: Finding[] }) {
         n={2}
         title="Source document upload"
         sub="80 radiology, lab, pathology, and clinic-note documents extracted with line-level traceability."
-        cta={{ to: "/sources", label: "Browse 80 documents →" }}
+        cta={{ to: "/platform/sources", label: "Browse 80 documents →" }}
       >
         <div className="grid grid-cols-4 gap-1.5 text-2xs">
           {["RAD · 35", "LAB · 35", "PATH · 5", "MD · 5"].map((s) => (
@@ -216,7 +216,7 @@ function Overview({ findings }: { findings: Finding[] }) {
         n={3}
         title="eCRF fill"
         sub="Extracted facts populate eCRF_DM, eCRF_LB, eCRF_Baseline, eCRF_Followup, and eCRF_Disease_Response. Coordinator confirms each visit."
-        cta={{ to: `/magic?subject=${subj}`, label: "Open coordinator view →" }}
+        cta={{ to: `/platform/visit?subject=${subj}`, label: "Open coordinator view →" }}
       >
         <div className="text-2xs text-slate-600">
           eCRF rows fed by source docs · DM · LB · TU · TR · RS
@@ -268,7 +268,7 @@ function Overview({ findings }: { findings: Finding[] }) {
             </div>
             <div className="mt-2">
               <Link
-                to={`/magic?subject=${subj}&visit=Week+16`}
+                to={`/platform/visit?subject=${subj}&visit=Week+16`}
                 className="text-2xs text-accent-700 hover:text-accent-800"
               >
                 See it in the eCRF →
@@ -757,7 +757,7 @@ function Step4({ finding }: { finding: Finding }) {
         </ul>
       )}
       <div className="mt-4 flex items-center gap-3">
-        <Link to="/magic" className="btn btn-primary">
+        <Link to="/platform/visit" className="btn btn-primary">
           Open in coordinator view
         </Link>
         <span className="text-2xs text-slate-500">

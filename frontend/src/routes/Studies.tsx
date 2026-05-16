@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Wordmark } from "../components/shell/Wordmark";
 import {
   deleteStudy,
@@ -10,11 +10,10 @@ import {
 
 export function Studies() {
   const [studies, setStudies] = useState<Study[]>(() => listStudies());
-  const navigate = useNavigate();
 
   const open = (s: Study) => {
     setCurrentStudy(s.id);
-    navigate("/");
+    window.location.assign("/platform");
   };
 
   const remove = (s: Study) => {
@@ -26,7 +25,9 @@ export function Studies() {
   return (
     <div className="min-h-screen bg-[#fafaf8]">
       <header className="bg-white border-b border-stone-200 px-6 h-14 flex items-center">
-        <Wordmark />
+        <Link to="/" className="hover:opacity-80" title="Back to landing">
+          <Wordmark />
+        </Link>
         <span className="ml-3 text-2xs text-slate-500 mono">/ Studies</span>
         <Link
           to="/welcome"

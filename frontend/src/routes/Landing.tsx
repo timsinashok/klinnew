@@ -10,8 +10,10 @@ export function Landing() {
   };
   return (
     <div className="min-h-screen bg-[#fafaf8] text-slate-900 flex flex-col">
-      <header className="bg-white border-b border-stone-200 px-6 h-14 flex items-center">
-        <Wordmark size="md" />
+      <header className="bg-white border-b border-stone-200 px-6 h-16 flex items-center">
+        <Link to="/" className="hover:opacity-80">
+          <Wordmark size="lg" />
+        </Link>
         <nav className="ml-auto flex items-center gap-2 text-sm">
           <a
             href="#how-it-works"

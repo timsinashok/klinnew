@@ -337,7 +337,7 @@ function SubjectRoster({
           </div>
         </div>
         <Link
-          to="/magic"
+          to="/platform/visit"
           className="text-2xs text-accent-700 hover:text-accent-800 font-medium"
         >
           Open SUBJ001 →
@@ -472,7 +472,7 @@ function SubjectRoster({
                   <td className="px-4 py-3 text-right">
                     <Link
                       to={{
-                        pathname: "/magic",
+                        pathname: "/platform/visit",
                         search: `?subject=${s.subject_id}${
                           s.latest_visit
                             ? `&visit=${encodeURIComponent(s.latest_visit)}`
@@ -548,7 +548,7 @@ function FindingsStream({
           </div>
         </div>
         <Link
-          to="/pipeline"
+          to="/platform/pipeline"
           className="text-2xs text-accent-700 hover:text-accent-800 font-medium"
         >
           Trace →
@@ -602,7 +602,7 @@ function ActionTiles() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       <Link
-        to="/magic"
+        to="/platform/visit"
         className="panel p-5 hover:border-accent-300 transition group"
       >
         <div className="kicker">Coordinator view</div>
@@ -619,7 +619,7 @@ function ActionTiles() {
         </div>
       </Link>
       <Link
-        to="/pipeline"
+        to="/platform/pipeline"
         className="panel p-5 hover:border-accent-300 transition group"
       >
         <div className="kicker">How a finding gets caught</div>
@@ -636,7 +636,7 @@ function ActionTiles() {
         </div>
       </Link>
       <Link
-        to="/sources"
+        to="/platform/sources"
         className="panel p-5 hover:border-accent-300 transition group"
       >
         <div className="kicker">What fed the eCRF</div>
