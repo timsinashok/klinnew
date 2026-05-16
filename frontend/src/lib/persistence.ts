@@ -160,15 +160,22 @@ export function seedPriorVisits(
   saveIngested(subjectId, Array.from(ingestedSet));
 }
 
-/** Wipe state for the *currently active* study only — keeps other demos
- *  intact. The Reset button on a study workspace calls this. */
-export function clearAllDemoState(): void {
+/** Wipe state for a specific study by id (defaults to currently-active
+ *  study). The Reset button on the studies dashboard and on a workspace
+ *  both call this. */
+export function clearStudyState(studyId?: string): void {
   if (typeof localStorage === "undefined") return;
-  const prefix = studyPrefix() + ".";
+  const id = studyId || currentStudy();
+  const prefix = `${NS}.${id}.`;
   const keys: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
     if (k && k.startsWith(prefix)) keys.push(k);
   }
   for (const k of keys) localStorage.removeItem(k);
+}
+
+/** Backwards-compatible alias. */
+export function clearAllDemoState(): void {
+  clearStudyState();
 }

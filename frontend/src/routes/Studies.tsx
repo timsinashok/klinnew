@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Wordmark } from "../components/shell/Wordmark";
+import { clearStudyState } from "../lib/persistence";
 import {
   deleteStudy,
   listStudies,
@@ -20,6 +21,19 @@ export function Studies() {
   const remove = (s: Study) => {
     if (!window.confirm(`Delete ${s.name}? This can't be undone.`)) return;
     deleteStudy(s.id);
+    setStudies(listStudies());
+  };
+
+  const reset = (s: Study) => {
+    if (
+      !window.confirm(
+        `Reset ${s.name}? Clears all submissions, edits, ingests, and the protocol-upload state for this study. Other studies are untouched.`,
+      )
+    )
+      return;
+    clearStudyState(s.id);
+    // Force a refresh so any Workspace/Onboarding component re-reads the
+    // localStorage flags cleanly.
     setStudies(listStudies());
   };
 
@@ -62,6 +76,7 @@ export function Studies() {
               study={s}
               onOpen={() => open(s)}
               onRemove={() => remove(s)}
+              onReset={() => reset(s)}
             />
           ))}
           <CreateTile />
@@ -75,10 +90,12 @@ function StudyCard({
   study,
   onOpen,
   onRemove,
+  onReset,
 }: {
   study: Study;
   onOpen: () => void;
   onRemove: () => void;
+  onReset: () => void;
 }) {
   const statusClass =
     study.status === "active"
@@ -139,6 +156,14 @@ function StudyCard({
       <div className="mt-5 flex items-center gap-2">
         <button className="btn btn-primary flex-1" onClick={onOpen}>
           Open study →
+        </button>
+        <button
+          className="btn"
+          onClick={onReset}
+          title="Reset this study's local state (submissions, edits, ingests)"
+          aria-label="Reset study state"
+        >
+          ↻
         </button>
         {!study.is_demo && (
           <button
