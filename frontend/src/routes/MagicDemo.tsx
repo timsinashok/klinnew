@@ -502,6 +502,10 @@ export function MagicDemo() {
         if (!v) missing.push(f.label);
       }
     } else if (visitIngested) {
+      // Assessment date + imaging method.
+      if (!(assessmentDates[visit] || "").trim())
+        missing.push("Assessment date");
+      if (!(methods[visit] || "").trim()) missing.push("Imaging method");
       // Tumor measurements for TARGET lesions at this visit.
       for (const l of lesions.filter((l) => l.category === "TARGET")) {
         const v = (l.measurements[visit] || "").trim();
@@ -509,16 +513,44 @@ export function MagicDemo() {
       }
       // Disease Response: all four codes required (skip for Baseline since
       // we hide Disease Response there).
-      if (visit !== "Baseline") {
+      if ((visit as string) !== "Baseline") {
         if (!responseRow.target.trim()) missing.push("Target response");
         if (!responseRow.nontarget.trim())
           missing.push("Non-target response");
         if (!responseRow.newlesions.trim()) missing.push("New lesions");
         if (!responseRow.overall.trim()) missing.push("Overall response");
       }
+      // Lab values: any empty result.
+      for (const r of labs[visit] || []) {
+        const v = (r.result_value || "").trim();
+        if (!v) missing.push(`Lab · ${r.test_code_raw}`);
+      }
     }
     return missing;
-  }, [visit, visitIngested, demographics, lesions, responseRow]);
+  }, [
+    visit,
+    visitIngested,
+    demographics,
+    lesions,
+    responseRow,
+    assessmentDates,
+    methods,
+    labs,
+  ]);
+
+  const missingSet = useMemo(
+    () => new Set(missingRequiredFields),
+    [missingRequiredFields],
+  );
+
+  const updateLab = (rowIdx: number, key: string, value: string) => {
+    setLabs((prev) => {
+      const visitRows = (prev[visit] || []).map((r, i) =>
+        i === rowIdx ? { ...r, [key]: value } : r,
+      );
+      return { ...prev, [visit]: visitRows };
+    });
+  };
 
   const submitBlocked =
     visitSubmitted ||
@@ -664,19 +696,22 @@ export function MagicDemo() {
                 baselineSum={baselineSum}
                 pctChange={pctChange}
                 heroFinding={heroFinding}
+                missingSet={missingSet}
               />
 
-              {visit !== "Baseline" && (
+              {(visit as string) !== "Baseline" && (
                 <DiseaseResponse
                   response={responseRow}
                   onChange={updateResponse}
                   heroFinding={heroFinding}
+                  missingSet={missingSet}
                 />
               )}
 
               <LabValues
                 rows={labs[visit] || []}
                 bilirubinHighlight={heroFinding?.rule_id === "LB-ADLB-001"}
+                onUpdate={updateLab}
               />
             </>
           )}
@@ -1082,6 +1117,7 @@ function TumorAssessment({
   baselineSum,
   pctChange,
   heroFinding,
+  missingSet,
 }: {
   lesions: LesionRow[];
   visit: Visit;
@@ -1096,9 +1132,12 @@ function TumorAssessment({
   baselineSum: number;
   pctChange: number;
   heroFinding: Finding | null;
+  missingSet: Set<string>;
 }) {
   const flagLesion = (heroFinding?.template_params as { lesion_id?: string } | undefined)
     ?.lesion_id;
+  const missingDate = missingSet.has("Assessment date");
+  const missingMethod = missingSet.has("Imaging method");
   const ghostId =
     heroFinding?.rule_id === "TU-TR-001"
       ? ((heroFinding.template_params as { ghost_id?: string }).ghost_id ?? null)
@@ -1126,10 +1165,19 @@ function TumorAssessment({
       />
       <div className="panel p-4 mb-3 grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr] gap-4">
         <label className="block">
-          <div className="kicker mb-1">Assessment date</div>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="kicker">Assessment date</span>
+            {missingDate && (
+              <span className="text-2xs text-sev-warning-700">required</span>
+            )}
+          </div>
           <input
             type="date"
-            className="field w-full h-9 text-sm"
+            className={`field w-full h-9 text-sm ${
+              missingDate
+                ? "border-sev-warning-400 bg-sev-warning-50/30"
+                : ""
+            }`}
             value={assessmentDate}
             onChange={(e) => onDateChange(e.target.value)}
           />
@@ -1150,11 +1198,14 @@ function TumorAssessment({
             className={`field w-full h-9 text-sm ${
               methodFlagged
                 ? "is-flagged-suggested border-sev-suggested-500 bg-sev-suggested-50"
-                : ""
+                : missingMethod
+                  ? "border-sev-warning-400 bg-sev-warning-50/30"
+                  : ""
             }`}
             value={method}
             onChange={(e) => onMethodChange(e.target.value)}
           >
+            <option value=""></option>
             {methodChoices.map((m) => (
               <option key={m} value={m}>
                 {m}
@@ -1252,7 +1303,9 @@ function TumorAssessment({
                                 className={`field text-right w-20 ${
                                   isFlaggedRow
                                     ? "is-flagged-critical"
-                                    : ""
+                                    : missingSet.has(`Measurement · ${l.id}`)
+                                      ? "border-sev-warning-400 bg-sev-warning-50/40"
+                                      : ""
                                 }`}
                               />
                               <span className="mono text-2xs text-slate-500">
@@ -1328,10 +1381,12 @@ function DiseaseResponse({
   response,
   onChange,
   heroFinding,
+  missingSet,
 }: {
   response: ResponseRecord;
   onChange: (k: keyof ResponseRecord, v: string) => void;
   heroFinding: Finding | null;
+  missingSet: Set<string>;
 }) {
   const flagFields = new Set(
     heroFinding ? heroFindingFields(heroFinding) : [],
@@ -1351,6 +1406,7 @@ function DiseaseResponse({
             options={RESPONSE_OPTIONS}
             onChange={(v) => onChange("target", v)}
             flagged={flagFields.has("target")}
+            missing={missingSet.has("Target response")}
           />
           <ResponseField
             label="Non-target response"
@@ -1358,6 +1414,7 @@ function DiseaseResponse({
             options={NONTARGET_OPTIONS}
             onChange={(v) => onChange("nontarget", v)}
             flagged={flagFields.has("nontarget")}
+            missing={missingSet.has("Non-target response")}
           />
           <ResponseField
             label="New lesions"
@@ -1365,6 +1422,7 @@ function DiseaseResponse({
             options={NEW_LESION_OPTIONS}
             onChange={(v) => onChange("newlesions", v)}
             flagged={flagFields.has("newlesions")}
+            missing={missingSet.has("New lesions")}
           />
           <ResponseField
             label="Overall response"
@@ -1372,6 +1430,7 @@ function DiseaseResponse({
             options={RESPONSE_OPTIONS}
             onChange={(v) => onChange("overall", v)}
             flagged={flagFields.has("overall")}
+            missing={missingSet.has("Overall response")}
           />
           <div className="col-span-2 flex items-center gap-3 pt-3 border-t border-stone-100">
             <label className="text-2xs text-slate-500">
@@ -1408,12 +1467,14 @@ function ResponseField({
   options,
   onChange,
   flagged,
+  missing,
 }: {
   label: string;
   value: string;
   options: string[];
   onChange: (v: string) => void;
   flagged?: boolean;
+  missing?: boolean;
 }) {
   const all = options.includes(value) || !value ? options : [...options, value];
   return (
@@ -1428,12 +1489,17 @@ function ResponseField({
             !
           </span>
         )}
+        {missing && !flagged && (
+          <span className="text-2xs text-sev-warning-700">required</span>
+        )}
       </div>
       <select
         className={`field w-full h-9 text-sm ${
           flagged
             ? "is-flagged-critical border-sev-critical-500 bg-sev-critical-50"
-            : ""
+            : missing
+              ? "border-sev-warning-400 bg-sev-warning-50/30"
+              : ""
         }`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -1843,9 +1909,11 @@ function DmField({
 function LabValues({
   rows,
   bilirubinHighlight,
+  onUpdate,
 }: {
   rows: Record<string, string>[];
   bilirubinHighlight: boolean;
+  onUpdate: (rowIdx: number, key: string, value: string) => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -1860,12 +1928,12 @@ function LabValues({
       </section>
     );
   }
-  const byPanel = new Map<string, Record<string, string>[]>();
-  for (const r of rows) {
+  const byPanel = new Map<string, { row: Record<string, string>; idx: number }[]>();
+  rows.forEach((r, idx) => {
     const panel = r.lab_panel || "Other";
     if (!byPanel.has(panel)) byPanel.set(panel, []);
-    byPanel.get(panel)!.push(r);
-  }
+    byPanel.get(panel)!.push({ row: r, idx });
+  });
   return (
     <section>
       <SectionHead
@@ -1889,14 +1957,15 @@ function LabValues({
                 </tr>
               </thead>
               <tbody>
-                {panelRows.map((r, i) => {
+                {panelRows.map(({ row: r, idx }) => {
                   const isBili =
                     r.test_code_raw === "BILI" || r.test_code_raw === "DBILI";
                   const flagRow = bilirubinHighlight && isBili;
                   const abnormal = (r.abnormal_flag || "").toUpperCase() !== "NORMAL";
+                  const empty = !(r.result_value || "").trim();
                   return (
                     <tr
-                      key={i}
+                      key={idx}
                       className={`border-b border-stone-100 last:border-b-0 ${
                         flagRow ? "bg-sev-critical-50/60" : ""
                       }`}
@@ -1909,16 +1978,24 @@ function LabValues({
                           {r.test_code_raw}
                         </span>
                       </td>
-                      <td
-                        className={`px-4 py-1.5 mono text-sm text-right ${
-                          flagRow
-                            ? "text-sev-critical-800 font-semibold"
-                            : abnormal
-                              ? "text-sev-warning-700"
-                              : "text-slate-800"
-                        }`}
-                      >
-                        {r.result_value}
+                      <td className="px-4 py-1.5 text-right">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={r.result_value || ""}
+                          onChange={(e) =>
+                            onUpdate(idx, "result_value", e.target.value)
+                          }
+                          className={`field mono w-24 text-right text-sm ${
+                            flagRow
+                              ? "border-sev-critical-500 bg-sev-critical-50 text-sev-critical-800 font-semibold"
+                              : empty
+                                ? "border-sev-warning-400 bg-sev-warning-50/30"
+                                : abnormal
+                                  ? "text-sev-warning-700"
+                                  : ""
+                          }`}
+                        />
                       </td>
                       <td className="px-4 py-1.5 mono text-2xs text-slate-600">
                         {r.result_unit_raw}

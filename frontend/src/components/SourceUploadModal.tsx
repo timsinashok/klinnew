@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import type { SourceDocument } from "../types";
 
-type Stage = "select" | "processing" | "done";
+type Stage = "drop" | "select" | "processing" | "done";
+
+type UploadedFile = { name: string; size: number; kind: string };
 
 export function SourceUploadModal({
   subject,
@@ -16,9 +18,25 @@ export function SourceUploadModal({
   onClose: () => void;
   onComplete: () => void;
 }) {
-  const [stage, setStage] = useState<Stage>("select");
+  const [stage, setStage] = useState<Stage>("drop");
   const [progress, setProgress] = useState(0);
   const [statusLine, setStatusLine] = useState("");
+  const [uploaded, setUploaded] = useState<UploadedFile[]>([]);
+
+  const acceptFiles = (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    const files: UploadedFile[] = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList[i];
+      files.push({
+        name: f.name,
+        size: f.size,
+        kind: classifyKind(f.name),
+      });
+    }
+    setUploaded((prev) => [...prev, ...files]);
+    setStage("select");
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -80,13 +98,74 @@ export function SourceUploadModal({
           )}
         </div>
 
-        {stage === "select" && (
+        {stage === "drop" && (
           <div className="p-5 space-y-3">
             <p className="text-sm text-slate-600 leading-snug">
-              Klin already has these documents for {subject} at {visit}. Click{" "}
-              <strong>Process documents</strong> to extract the clinical facts
-              and pre-fill the eCRF.
+              Drop the source documents for{" "}
+              <span className="mono">{subject}</span> at{" "}
+              <span className="mono">{visit}</span> — radiology, lab results,
+              pathology, MD notes. Klin extracts clinical facts and pre-fills
+              the eCRF; you review and submit.
             </p>
+            <DropZone onFiles={acceptFiles} />
+            {docs.length > 0 && (
+              <div className="text-2xs text-slate-500 text-center pt-1">
+                Or{" "}
+                <button
+                  type="button"
+                  className="underline text-accent-700 hover:text-accent-800"
+                  onClick={() => setStage("select")}
+                >
+                  use the {docs.length} pre-bundled document
+                  {docs.length === 1 ? "" : "s"} for this visit
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {stage === "select" && (
+          <div className="p-5 space-y-3">
+            {uploaded.length > 0 ? (
+              <>
+                <p className="text-sm text-slate-700">
+                  <span className="font-semibold">{uploaded.length}</span>{" "}
+                  file{uploaded.length === 1 ? "" : "s"} ready · Klin will read
+                  them and pre-fill the eCRF.
+                </p>
+                <ul className="space-y-1.5">
+                  {uploaded.map((u, i) => (
+                    <li
+                      key={i}
+                      className="border border-stone-200 rounded p-2.5 bg-white flex items-center gap-2"
+                    >
+                      <span className="text-2xs px-1.5 py-0.5 rounded border border-accent-200 bg-accent-50 text-accent-700">
+                        {u.kind}
+                      </span>
+                      <span className="mono text-2xs text-slate-700 truncate">
+                        {u.name}
+                      </span>
+                      <span className="ml-auto mono text-2xs text-slate-400">
+                        {(u.size / 1024).toFixed(1)} KB
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  className="text-2xs text-slate-500 hover:text-accent-700 underline"
+                  onClick={() => setStage("drop")}
+                >
+                  + add more files
+                </button>
+              </>
+            ) : (
+              <p className="text-sm text-slate-600 leading-snug">
+                Klin already has these documents for {subject} at {visit}. Click{" "}
+                <strong>Process documents</strong> to extract the clinical facts
+                and pre-fill the eCRF.
+              </p>
+            )}
+            {uploaded.length === 0 && (
             <ul className="space-y-2">
               {docs.map((d) => (
                 <li
@@ -128,6 +207,7 @@ export function SourceUploadModal({
                 </li>
               )}
             </ul>
+            )}
             <div className="flex items-center gap-3 pt-2 border-t border-stone-100">
               <span className="text-2xs text-slate-500">
                 Klin pre-fills, you review and submit.
@@ -181,6 +261,58 @@ export function SourceUploadModal({
       </div>
     </div>
   );
+}
+
+function DropZone({ onFiles }: { onFiles: (f: FileList | null) => void }) {
+  const [drag, setDrag] = useState(false);
+  return (
+    <label
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDrag(true);
+      }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDrag(false);
+        onFiles(e.dataTransfer?.files || null);
+      }}
+      className={`block panel p-8 text-center cursor-pointer transition border-2 border-dashed ${
+        drag
+          ? "border-accent-500 bg-accent-50"
+          : "border-stone-300 hover:border-accent-300 hover:bg-stone-50"
+      }`}
+    >
+      <div className="w-10 h-10 mx-auto mb-2 inline-flex items-center justify-center rounded-full bg-stone-100 text-slate-500">
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <path d="M12 4v12m0 0l-4-4m4 4l4-4" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M4 18h16" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      <div className="text-sm font-medium text-slate-800">
+        Drop radiology / lab / pathology reports here
+      </div>
+      <div className="text-2xs text-slate-500 mt-1">
+        PDF, DOCX, or images · any file works for the demo
+      </div>
+      <input
+        type="file"
+        className="hidden"
+        multiple
+        onChange={(e) => onFiles(e.target.files)}
+      />
+    </label>
+  );
+}
+
+function classifyKind(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.includes("rad") || lower.includes("ct") || lower.includes("mri"))
+    return "Radiology";
+  if (lower.includes("lab") || lower.includes("chem")) return "Lab";
+  if (lower.includes("path")) return "Pathology";
+  if (lower.includes("note") || lower.includes("md")) return "MD note";
+  return "Source";
 }
 
 function buildStatusLines(docs: SourceDocument[]): string[] {
