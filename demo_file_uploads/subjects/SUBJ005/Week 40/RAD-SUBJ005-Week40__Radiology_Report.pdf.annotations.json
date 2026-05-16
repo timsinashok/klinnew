@@ -1,0 +1,117 @@
+{
+  "pdf": "RAD-SUBJ005-Week40__Radiology_Report.pdf",
+  "doc_id": "RAD-SUBJ005-Week40",
+  "doc_type": "Radiology Report",
+  "subject_id": "SUBJ005",
+  "visit": "Week 40",
+  "pages": [
+    {
+      "width": 612.0,
+      "height": 792.0
+    },
+    {
+      "width": 612.0,
+      "height": 792.0
+    }
+  ],
+  "annotations": [
+    {
+      "field_key": "assessment:date",
+      "form": "Tumor Assessment",
+      "field_label": "Assessment date",
+      "page": 1,
+      "bbox": [
+        154.0,
+        168.25599999999997,
+        198.464,
+        176.25599999999997
+      ],
+      "snippet": "17-Oct-2026",
+      "confidence": 0.95
+    },
+    {
+      "field_key": "assessment:method",
+      "form": "Tumor Assessment",
+      "field_label": "Imaging method",
+      "page": 1,
+      "bbox": [
+        154.0,
+        200.25599999999997,
+        164.66400000000002,
+        208.25599999999997
+      ],
+      "snippet": "CT",
+      "confidence": 0.9
+    },
+    {
+      "field_key": "lesion:T01:measurement",
+      "form": "Tumor Assessment",
+      "field_label": "T01 diameter",
+      "page": 1,
+      "bbox": [
+        329.40000000000003,
+        531.8317999999999,
+        392.1284,
+        539.2318
+      ],
+      "snippet": "24 mm",
+      "confidence": 0.9
+    },
+    {
+      "field_key": "lesion:T01:status",
+      "form": "Tumor Assessment",
+      "field_label": "T01 status",
+      "page": 1,
+      "bbox": [
+        419.40000000000003,
+        531.8317999999999,
+        454.3502000000001,
+        539.2318
+      ],
+      "snippet": "PRESENT",
+      "confidence": 0.9
+    },
+    {
+      "field_key": "lesion:T02:measurement",
+      "form": "Tumor Assessment",
+      "field_label": "T02 diameter",
+      "page": 1,
+      "bbox": [
+        329.40000000000003,
+        544.7318,
+        392.1284,
+        552.1318
+      ],
+      "snippet": "31 mm",
+      "confidence": 0.9
+    },
+    {
+      "field_key": "lesion:T02:status",
+      "form": "Tumor Assessment",
+      "field_label": "T02 status",
+      "page": 1,
+      "bbox": [
+        419.40000000000003,
+        544.7318,
+        454.3502000000001,
+        552.1318
+      ],
+      "snippet": "PRESENT",
+      "confidence": 0.9
+    },
+    {
+      "field_key": "nontarget:NT01:status",
+      "form": "Tumor Assessment",
+      "field_label": "NT01 status",
+      "page": 1,
+      "bbox": [
+        343.8,
+        612.4318000000001,
+        378.75020000000006,
+        619.8318
+      ],
+      "snippet": "PRESENT",
+      "confidence": 0.9
+    }
+  ]
+}

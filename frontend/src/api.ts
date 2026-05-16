@@ -3,12 +3,27 @@ import type {
   Finding,
   ProtocolResponse,
   RunResponse,
+  SourceAnnotationFile,
   SourceDocument,
   SourcesResponse,
   Stats,
 } from "./types";
 
 const BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
+
+export function sourcePdfUrl(sourceId: string): string {
+  return `${BASE}/api/sources/${encodeURIComponent(sourceId)}/pdf`;
+}
+
+export async function fetchSourceAnnotations(
+  sourceId: string,
+): Promise<SourceAnnotationFile> {
+  const r = await fetch(
+    `${BASE}/api/sources/${encodeURIComponent(sourceId)}/annotations`,
+  );
+  if (!r.ok) throw new Error(`annotations ${sourceId} failed: ${r.status}`);
+  return await r.json();
+}
 
 export async function runEngine(
   enableLlm = true,

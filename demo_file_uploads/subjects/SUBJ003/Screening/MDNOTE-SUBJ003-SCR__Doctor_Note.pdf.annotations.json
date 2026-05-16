@@ -1,0 +1,14 @@
+{
+  "pdf": "MDNOTE-SUBJ003-SCR__Doctor_Note.pdf",
+  "doc_id": "MDNOTE-SUBJ003-SCR",
+  "doc_type": "Doctor Note",
+  "subject_id": "SUBJ003",
+  "visit": "Screening",
+  "pages": [
+    {
+      "width": 612.0,
+      "height": 792.0
+    }
+  ],
+  "annotations": []
+}

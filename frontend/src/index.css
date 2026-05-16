@@ -184,3 +184,22 @@ select.field {
 .terminal .key {
   color: #fcd34d;
 }
+
+.field-traced {
+  box-shadow: 0 0 0 2px #6366f1, 0 0 0 4px rgba(99, 102, 241, 0.2);
+  border-color: #6366f1 !important;
+  transition: box-shadow 120ms ease;
+}
+
+.btn-xs {
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.2;
+  border: 1px solid #d6d3d1;
+  border-radius: 3px;
+  background: #fff;
+}
+.btn-xs:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

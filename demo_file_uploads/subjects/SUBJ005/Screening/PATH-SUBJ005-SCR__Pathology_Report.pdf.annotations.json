@@ -1,0 +1,14 @@
+{
+  "pdf": "PATH-SUBJ005-SCR__Pathology_Report.pdf",
+  "doc_id": "PATH-SUBJ005-SCR",
+  "doc_type": "Pathology Report",
+  "subject_id": "SUBJ005",
+  "visit": "Screening",
+  "pages": [
+    {
+      "width": 612.0,
+      "height": 792.0
+    }
+  ],
+  "annotations": []
+}

@@ -116,6 +116,26 @@ export interface SourcesResponse {
   documents: SourceDocument[];
 }
 
+export interface SourceAnnotation {
+  field_key: string;
+  form: string;
+  field_label: string;
+  page: number;
+  bbox: [number, number, number, number];
+  snippet: string;
+  confidence: number;
+}
+
+export interface SourceAnnotationFile {
+  pdf: string;
+  doc_id: string;
+  doc_type?: string;
+  subject_id?: string;
+  visit?: string;
+  pages: { width: number; height: number }[];
+  annotations: SourceAnnotation[];
+}
+
 export interface DomainRow extends Record<string, unknown> {}
 export interface DomainResponse {
   rows: DomainRow[];

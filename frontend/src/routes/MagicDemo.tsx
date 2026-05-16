@@ -5,6 +5,7 @@ import { fetchCsv, fetchSources, parseCsv, runEngine } from "../api";
 import { AwaitingSourceDocs } from "../components/AwaitingSourceDocs";
 import { ChartTemplate } from "../components/ChartTemplate";
 import { SeverityChip } from "../components/SeverityBadge";
+import { SourcePdfPanel } from "../components/SourcePdfPanel";
 import { SourceUploadModal } from "../components/SourceUploadModal";
 import {
   clearSubmissions,
@@ -104,6 +105,22 @@ export function MagicDemo() {
   const [justSubmitted, setJustSubmitted] = useState<string | null>(null);
   const [sourceDocs, setSourceDocs] = useState<SourceDocument[]>([]);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(null);
+  const [pdfPanelOpen, setPdfPanelOpen] = useState(true);
+
+  // Toggle a CSS ring on the eCRF input whose data-field-key matches the
+  // currently-focused annotation. DOM-driven so we don't re-render the
+  // whole form on hover.
+  useEffect(() => {
+    const prev = document.querySelectorAll(".field-traced");
+    prev.forEach((el) => el.classList.remove("field-traced"));
+    if (focusedFieldKey) {
+      const sel = `[data-field-key="${focusedFieldKey.replace(/"/g, '\\"')}"]`;
+      document
+        .querySelectorAll(sel)
+        .forEach((el) => el.classList.add("field-traced"));
+    }
+  }, [focusedFieldKey]);
   const lastSubjectVisit = useRef<string>("");
 
   // Load data once.
@@ -593,7 +610,8 @@ export function MagicDemo() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 flex min-h-0">
+        <div className="flex-1 overflow-y-auto min-w-0">
         <PatientHeader
           subject={subject}
           visit={visit}
@@ -686,6 +704,7 @@ export function MagicDemo() {
                 pctChange={pctChange}
                 heroFinding={heroFinding}
                 missingSet={missingSet}
+                onFieldFocus={setFocusedFieldKey}
               />
 
               {(visit as string) !== "Baseline" && (
@@ -694,6 +713,7 @@ export function MagicDemo() {
                   onChange={updateResponse}
                   heroFinding={heroFinding}
                   missingSet={missingSet}
+                  onFieldFocus={setFocusedFieldKey}
                 />
               )}
 
@@ -701,6 +721,7 @@ export function MagicDemo() {
                 rows={labs[visit] || []}
                 bilirubinHighlight={heroFinding?.rule_id === "LB-ADLB-001"}
                 onUpdate={updateLab}
+                onFieldFocus={setFocusedFieldKey}
               />
             </>
           )}
@@ -742,6 +763,18 @@ export function MagicDemo() {
             ran &&
             visitFindings.length === 0 && <CleanVisit />}
         </div>
+        </div>
+        {visitIngested && visitSourceDocs.length > 0 && (
+          <SourcePdfPanel
+            subject={subject}
+            visit={visit}
+            docs={visitSourceDocs}
+            focusedFieldKey={focusedFieldKey}
+            onHoverAnnotation={setFocusedFieldKey}
+            open={pdfPanelOpen}
+            onToggle={() => setPdfPanelOpen((o) => !o)}
+          />
+        )}
       </div>
 
       <SubmitFooter
@@ -1100,6 +1133,7 @@ function TumorAssessment({
   pctChange,
   heroFinding,
   missingSet,
+  onFieldFocus,
 }: {
   lesions: LesionRow[];
   visit: Visit;
@@ -1115,11 +1149,19 @@ function TumorAssessment({
   pctChange: number;
   heroFinding: Finding | null;
   missingSet: Set<string>;
+  onFieldFocus: (key: string | null) => void;
 }) {
   const flagLesion = (heroFinding?.template_params as { lesion_id?: string } | undefined)
     ?.lesion_id;
   const missingDate = missingSet.has("Assessment date");
   const missingMethod = missingSet.has("Imaging method");
+  const trace = (key: string) => ({
+    "data-field-key": key,
+    onMouseEnter: () => onFieldFocus(key),
+    onMouseLeave: () => onFieldFocus(null),
+    onFocus: () => onFieldFocus(key),
+    onBlur: () => onFieldFocus(null),
+  });
   const ghostId =
     heroFinding?.rule_id === "TU-TR-001"
       ? ((heroFinding.template_params as { ghost_id?: string }).ghost_id ?? null)
@@ -1162,6 +1204,7 @@ function TumorAssessment({
             }`}
             value={assessmentDate}
             onChange={(e) => onDateChange(e.target.value)}
+            {...trace("assessment:date")}
           />
         </label>
         <label className="block">
@@ -1186,6 +1229,7 @@ function TumorAssessment({
             }`}
             value={method}
             onChange={(e) => onMethodChange(e.target.value)}
+            {...trace("assessment:method")}
           >
             <option value=""></option>
             {methodChoices.map((m) => (
@@ -1289,6 +1333,7 @@ function TumorAssessment({
                                       ? "border-sev-warning-400 bg-sev-warning-50/40"
                                       : ""
                                 }`}
+                                {...trace(`lesion:${l.id}:measurement`)}
                               />
                               <span className="mono text-2xs text-slate-500">
                                 mm
@@ -1313,6 +1358,11 @@ function TumorAssessment({
                         className="field w-32"
                         value={l.status[visit] || "PRESENT"}
                         onChange={(e) => onUpdateStatus(l.id, e.target.value)}
+                        {...trace(
+                          l.category === "NON-TARGET"
+                            ? `nontarget:${l.id}:status`
+                            : `lesion:${l.id}:status`,
+                        )}
                       >
                         {["PRESENT", "ABSENT", "EQUIVOCAL"].map((s) => (
                           <option key={s} value={s}>
@@ -1364,12 +1414,15 @@ function DiseaseResponse({
   onChange,
   heroFinding,
   missingSet,
+  onFieldFocus,
 }: {
   response: ResponseRecord;
   onChange: (k: keyof ResponseRecord, v: string) => void;
   heroFinding: Finding | null;
   missingSet: Set<string>;
+  onFieldFocus: (key: string | null) => void;
 }) {
+  void onFieldFocus;
   const flagFields = new Set(
     heroFinding ? heroFindingFields(heroFinding) : [],
   );
@@ -2048,10 +2101,12 @@ function LabValues({
   rows,
   bilirubinHighlight,
   onUpdate,
+  onFieldFocus,
 }: {
   rows: Record<string, string>[];
   bilirubinHighlight: boolean;
   onUpdate: (rowIdx: number, key: string, value: string) => void;
+  onFieldFocus: (key: string | null) => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -2124,6 +2179,15 @@ function LabValues({
                           onChange={(e) =>
                             onUpdate(idx, "result_value", e.target.value)
                           }
+                          data-field-key={`lab:${r.test_code_raw}:result`}
+                          onMouseEnter={() =>
+                            onFieldFocus(`lab:${r.test_code_raw}:result`)
+                          }
+                          onMouseLeave={() => onFieldFocus(null)}
+                          onFocus={() =>
+                            onFieldFocus(`lab:${r.test_code_raw}:result`)
+                          }
+                          onBlur={() => onFieldFocus(null)}
                           className={`field mono w-24 text-right text-sm ${
                             flagRow
                               ? "border-sev-critical-500 bg-sev-critical-50 text-sev-critical-800 font-semibold"

@@ -1,0 +1,183 @@
+{
+  "pdf": "LAB-SUBJ002-Week16__Central_Lab_Report.pdf",
+  "doc_id": "LAB-SUBJ002-Week16",
+  "doc_type": "Central Lab Report",
+  "subject_id": "SUBJ002",
+  "visit": "Week 16",
+  "pages": [
+    {
+      "width": 612.0,
+      "height": 792.0
+    }
+  ],
+  "annotations": [
+    {
+      "field_key": "lab:HGB:result",
+      "form": "Lab Values",
+      "field_label": "HGB result",
+      "page": 1,
+      "bbox": [
+        214.2,
+        276.549,
+        227.82199999999997,
+        283.54900000000004
+      ],
+      "snippet": "13.3",
+      "confidence": 0.92
+    },
+    {
+      "field_key": "lab:WBC:result",
+      "form": "Lab Values",
+      "field_label": "WBC result",
+      "page": 1,
+      "bbox": [
+        214.2,
+        289.04900000000004,
+        223.92999999999998,
+        296.04900000000004
+      ],
+      "snippet": "6.5",
+      "confidence": 0.92
+    },
+    {
+      "field_key": "lab:NEUT:result",
+      "form": "Lab Values",
+      "field_label": "NEUT result",
+      "page": 1,
+      "bbox": [
+        214.2,
+        301.54900000000004,
+        223.92999999999998,
+        308.54900000000004
+      ],
+      "snippet": "4.1",
+      "confidence": 0.92
+    },
+    {
+      "field_key": "lab:PLAT:result",
+      "form": "Lab Values",
+      "field_label": "PLAT result",
+      "page": 1,
+      "bbox": [
+        214.2,
+        314.04900000000004,
+        225.87599999999998,
+        321.04900000000004
+      ],
+      "snippet": "227",
+      "confidence": 0.92
+    },
+    {
+      "field_key": "lab:AST:result",
+      "form": "Lab Values",
+      "field_label": "AST result",
+      "page": 1,
+      "bbox": [
+        214.2,
+        354.089,
+        221.98399999999998,
+        361.089
+      ],
+      "snippet": "32",
+      "confidence": 0.92
+    },
+    {
+      "field_key": "lab:ALT:result",
+      "form": "Lab Values",
+      "field_label": "ALT result",
+      "page": 1,
+      "bbox": [
+        214.2,
+        366.589,
+        221.98399999999998,
+        373.589
+      ],
+      "snippet": "36",
+      "confidence": 0.92
+    },
+    {
+      "field_key": "lab:BILI:result",
+      "form": "Lab Values",
+      "field_label": "BILI result",
+      "page": 1,
+      "bbox": [
+        214.2,
+        379.089,
+        223.92999999999998,
+        386.089
+      ],
+      "snippet": "0.8",
+      "confidence": 0.92
+    },
+    {
+      "field_key": "lab:DBILI:result",
+      "form": "Lab Values",
+      "field_label": "DBILI result",
+      "page": 1,
+      "bbox": [
+        214.2,
+        391.589,
+        223.92999999999998,
+        398.589
+      ],
+      "snippet": "0.2",
+      "confidence": 0.92
+    },
+    {
+      "field_key": "lab:CREAT:result",
+      "form": "Lab Values",
+      "field_label": "CREAT result",
+      "page": 1,
+      "bbox": [
+        214.2,
+        404.089,
+        218.09199999999998,
+        411.089
+      ],
+      "snippet": "1",
+      "confidence": 0.92
+    },
+    {
+      "field_key": "lab:ALB:result",
+      "form": "Lab Values",
+      "field_label": "ALB result",
+      "page": 1,
+      "bbox": [
+        214.2,
+        416.589,
+        223.92999999999998,
+        423.589
+      ],
+      "snippet": "3.9",
+      "confidence": 0.92
+    },
+    {
+      "field_key": "lab:SODIUM:result",
+      "form": "Lab Values",
+      "field_label": "SODIUM result",
+      "page": 1,
+      "bbox": [
+        214.2,
+        429.089,
+        225.87599999999998,
+        436.089
+      ],
+      "snippet": "138",
+      "confidence": 0.92
+    },
+    {
+      "field_key": "lab:POTASS:result",
+      "form": "Lab Values",
+      "field_label": "POTASS result",
+      "page": 1,
+      "bbox": [
+        214.2,
+        441.589,
+        223.92999999999998,
+        448.589
+      ],
+      "snippet": "4.2",
+      "confidence": 0.92
+    }
+  ]
+}
