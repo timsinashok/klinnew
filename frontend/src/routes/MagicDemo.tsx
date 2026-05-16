@@ -71,6 +71,80 @@ function findingKey(f: Finding): string {
   return `${f.rule_id}|${f.subject_id}|${f.visit ?? ""}|${f.lineage.field}`;
 }
 
+const PR_TOKENS = new Set(["pr", "partial response", "partialresponse"]);
+const CR_TOKENS = new Set(["cr", "complete response", "completeresponse"]);
+const PD_TOKENS = new Set([
+  "pd",
+  "progressive disease",
+  "progressivedisease",
+]);
+
+function normalize(s: string | undefined | null): string {
+  return (s || "").toString().trim().toLowerCase();
+}
+
+/** Returns true when the coordinator's in-browser edits have changed the
+ * data so the rule that originally fired no longer applies. The engine
+ * itself runs server-side over bundled CSVs and can't see those edits, so
+ * we re-evaluate the trigger client-side and drop the finding from
+ * `visitFindings`. Conservative: when in doubt, keep the finding. */
+function isFindingClearedByEdit(
+  f: Finding,
+  response: ResponseRecord | undefined,
+  lesions: LesionRow[],
+  visit: string,
+): boolean {
+  const r = response || empty();
+  const target = normalize(r.target);
+  const overall = normalize(r.overall);
+  const newLesions = normalize(r.newlesions);
+
+  switch (f.rule_id) {
+    case "TR-RS-001": {
+      // PR-threshold rule fires when target / overall response is PR
+      // (with insufficient measurement decrease). If the coordinator has
+      // changed *both* fields away from PR, the rule no longer applies.
+      const targetIsPR = PR_TOKENS.has(target);
+      const overallIsPR = PR_TOKENS.has(overall);
+      return !targetIsPR && !overallIsPR;
+    }
+    case "TR-RS-003": {
+      // Overall CR conflicts with persistent non-target. If overall is no
+      // longer CR, the rule doesn't apply.
+      return !CR_TOKENS.has(overall);
+    }
+    case "TU/TR-RS-002": {
+      // New lesion vs response conflict — if the coordinator has switched
+      // "New lesions" to "Yes" / "Present", or changed overall response
+      // to PD, the conflict resolves.
+      const newPresent = ["yes", "present", "y"].includes(newLesions);
+      const overallPD = PD_TOKENS.has(overall);
+      return newPresent || overallPD;
+    }
+    case "LARGE_DROP": {
+      // Triggers on a >50% drop visit-over-visit on a target lesion. If
+      // the coordinator has changed the offending measurement to a value
+      // that no longer represents a drop, drop the finding.
+      const lesionId = (
+        f.template_params as { lesion_id?: string } | undefined
+      )?.lesion_id;
+      if (!lesionId) return false;
+      const lesion = lesions.find((l) => l.id === lesionId);
+      if (!lesion) return false;
+      const cur = parseFloat(lesion.measurements[visit] || "");
+      const prev = parseFloat(lesion.measurements["Baseline"] || "");
+      if (!Number.isFinite(cur) || !Number.isFinite(prev) || prev <= 0)
+        return false;
+      const pct = (cur - prev) / prev;
+      return pct > -0.5;
+    }
+    default:
+      // Rules we don't have client-side trigger logic for stay as-is.
+      // The user can flag them; the demo doesn't try to auto-clear.
+      return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 export function MagicDemo() {
@@ -349,13 +423,20 @@ export function MagicDemo() {
     return VISITS.slice(0, cur + 1) as unknown as Visit[];
   }, [visit]);
 
-  // Findings for the chosen subject + visit.
+  // Findings for the chosen subject + visit, then filtered through the
+  // client-side override layer. The Python engine reads bundled CSVs and
+  // can't see in-browser edits to the form, so we re-check each rule's
+  // trigger against the current form state and drop findings the user has
+  // already addressed by editing the data.
   const visitFindings = useMemo(() => {
     if (!allFindings) return [];
-    return allFindings.filter(
+    const raw = allFindings.filter(
       (f) => f.subject_id === subject && (f.visit || "") === visit,
     );
-  }, [allFindings, subject, visit]);
+    return raw.filter(
+      (f) => !isFindingClearedByEdit(f, responses[visit], lesions, visit),
+    );
+  }, [allFindings, subject, visit, responses, lesions]);
 
   const openFindings = useMemo(
     () => visitFindings.filter((f) => !dispositions.has(findingKey(f))),
