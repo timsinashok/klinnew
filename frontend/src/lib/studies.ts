@@ -34,9 +34,28 @@ export const DEMO_STUDY: Study = {
   owner: "demo",
 };
 
+/** Second demo backed by the same engine data, separate persistence
+ *  namespace — so two side-by-side demo walkthroughs can be at different
+ *  stages without trampling each other. */
+export const DEMO_STUDY_B: Study = {
+  id: "KLIN-ONC-DEMO-002",
+  name: "Phase II Solid Tumour (walkthrough copy)",
+  sponsor: "Klin AI · Synthetic Sponsor",
+  criteria: "RECIST 1.1",
+  protocol_name: "KLIN-ONC-DEMO-001.pdf",
+  status: "active",
+  is_demo: true,
+  subject_count: 5,
+  source_doc_count: 80,
+  created_at: "2026-01-02T00:00:00Z",
+  owner: "demo",
+};
+
+const DEMO_STUDIES: Study[] = [DEMO_STUDY, DEMO_STUDY_B];
+
 export function listStudies(): Study[] {
   const custom = loadCustomStudies();
-  return [DEMO_STUDY, ...custom];
+  return [...DEMO_STUDIES, ...custom];
 }
 
 function loadCustomStudies(): Study[] {
@@ -51,7 +70,7 @@ function loadCustomStudies(): Study[] {
 
 export function saveStudy(study: Study): void {
   if (typeof localStorage === "undefined") return;
-  if (study.is_demo) return; // never persist the demo
+  if (DEMO_STUDIES.some((d) => d.id === study.id)) return; // never persist demos
   const studies = loadCustomStudies();
   const i = studies.findIndex((s) => s.id === study.id);
   if (i >= 0) studies[i] = study;
@@ -61,7 +80,7 @@ export function saveStudy(study: Study): void {
 
 export function deleteStudy(id: string): void {
   if (typeof localStorage === "undefined") return;
-  if (id === DEMO_STUDY.id) return;
+  if (DEMO_STUDIES.some((d) => d.id === id)) return;
   const studies = loadCustomStudies().filter((s) => s.id !== id);
   localStorage.setItem(STUDIES_KEY, JSON.stringify(studies));
   if (getCurrentStudyId() === id) clearCurrentStudy();

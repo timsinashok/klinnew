@@ -1,9 +1,25 @@
 /**
  * Client-side persistence (localStorage). Survives reload only.
- * Namespace `klin.v0.<subjectId>`.
+ * Namespace `klin.v0.<studyId>.<subjectId>`.
+ *
+ * Keys are scoped by the currently-active study (read from
+ * `klin.v0.current_study`) so multiple demo studies have independent
+ * submissions, ingests, and edits — switching study via URL or the studies
+ * dashboard gives you a clean state to demo from.
  */
 
 const NS = "klin.v0";
+const CURRENT_STUDY_KEY = `${NS}.current_study`;
+const DEFAULT_STUDY_ID = "KLIN-ONC-DEMO-001";
+
+function currentStudy(): string {
+  if (typeof localStorage === "undefined") return DEFAULT_STUDY_ID;
+  return localStorage.getItem(CURRENT_STUDY_KEY) || DEFAULT_STUDY_ID;
+}
+
+function studyPrefix(): string {
+  return `${NS}.${currentStudy()}`;
+}
 
 export interface Persisted {
   edits: Record<string, string>; // key `${visit}|${field}` -> value
@@ -19,7 +35,7 @@ const EMPTY: Persisted = {
 };
 
 function key(subjectId: string): string {
-  return `${NS}.${subjectId}`;
+  return `${studyPrefix()}.${subjectId}`;
 }
 
 export function loadSubject(subjectId: string): Persisted {
@@ -59,12 +75,14 @@ export function editKey(visit: string | null | undefined, field: string): string
 
 // --- visit submission tracking --------------------------------------------
 
-const SUBMIT_KEY_PREFIX = "klin.v0.submitted.";
+function submitKey(subjectId: string): string {
+  return `${studyPrefix()}.submitted.${subjectId}`;
+}
 
 export function loadSubmissions(subjectId: string): string[] {
   if (typeof localStorage === "undefined") return [];
   try {
-    const raw = localStorage.getItem(SUBMIT_KEY_PREFIX + subjectId);
+    const raw = localStorage.getItem(submitKey(subjectId));
     return raw ? (JSON.parse(raw) as string[]) : [];
   } catch {
     return [];
@@ -74,10 +92,7 @@ export function loadSubmissions(subjectId: string): string[] {
 export function saveSubmissions(subjectId: string, visits: string[]): void {
   if (typeof localStorage === "undefined") return;
   try {
-    localStorage.setItem(
-      SUBMIT_KEY_PREFIX + subjectId,
-      JSON.stringify(visits),
-    );
+    localStorage.setItem(submitKey(subjectId), JSON.stringify(visits));
   } catch {
     /* quota / disabled */
   }
@@ -85,17 +100,19 @@ export function saveSubmissions(subjectId: string, visits: string[]): void {
 
 export function clearSubmissions(subjectId: string): void {
   if (typeof localStorage === "undefined") return;
-  localStorage.removeItem(SUBMIT_KEY_PREFIX + subjectId);
+  localStorage.removeItem(submitKey(subjectId));
 }
 
 // --- ingested visits (source documents processed) -------------------------
 
-const INGEST_KEY_PREFIX = "klin.v0.ingested.";
+function ingestKey(subjectId: string): string {
+  return `${studyPrefix()}.ingested.${subjectId}`;
+}
 
 export function loadIngested(subjectId: string): string[] {
   if (typeof localStorage === "undefined") return [];
   try {
-    const raw = localStorage.getItem(INGEST_KEY_PREFIX + subjectId);
+    const raw = localStorage.getItem(ingestKey(subjectId));
     return raw ? (JSON.parse(raw) as string[]) : [];
   } catch {
     return [];
@@ -105,10 +122,7 @@ export function loadIngested(subjectId: string): string[] {
 export function saveIngested(subjectId: string, visits: string[]): void {
   if (typeof localStorage === "undefined") return;
   try {
-    localStorage.setItem(
-      INGEST_KEY_PREFIX + subjectId,
-      JSON.stringify(visits),
-    );
+    localStorage.setItem(ingestKey(subjectId), JSON.stringify(visits));
   } catch {
     /* quota */
   }
@@ -116,16 +130,18 @@ export function saveIngested(subjectId: string, visits: string[]): void {
 
 // --- protocol upload gate -------------------------------------------------
 
-const PROTOCOL_KEY = "klin.v0.protocol_uploaded";
+function protocolKey(): string {
+  return `${studyPrefix()}.protocol_uploaded`;
+}
 
 export function isProtocolUploaded(): boolean {
   if (typeof localStorage === "undefined") return false;
-  return localStorage.getItem(PROTOCOL_KEY) === "true";
+  return localStorage.getItem(protocolKey()) === "true";
 }
 
 export function markProtocolUploaded(): void {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(PROTOCOL_KEY, "true");
+  localStorage.setItem(protocolKey(), "true");
 }
 
 // --- demo seeding ---------------------------------------------------------
@@ -144,12 +160,15 @@ export function seedPriorVisits(
   saveIngested(subjectId, Array.from(ingestedSet));
 }
 
+/** Wipe state for the *currently active* study only — keeps other demos
+ *  intact. The Reset button on a study workspace calls this. */
 export function clearAllDemoState(): void {
   if (typeof localStorage === "undefined") return;
+  const prefix = studyPrefix() + ".";
   const keys: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
-    if (k && k.startsWith("klin.v0")) keys.push(k);
+    if (k && k.startsWith(prefix)) keys.push(k);
   }
   for (const k of keys) localStorage.removeItem(k);
 }

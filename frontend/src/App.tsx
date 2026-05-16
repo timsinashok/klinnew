@@ -32,7 +32,7 @@ function StudyGuard({ children }: { children: React.ReactNode }) {
   // sub-components that still read it (UtilityBar, persistence helpers,
   // SourceUploadModal etc.) operate on the right study.
   if (typeof window !== "undefined") setCurrentStudy(study.id);
-  if (study.id === DEMO_STUDY.id && !isProtocolUploaded()) {
+  if (study.is_demo && !isProtocolUploaded()) {
     return <Onboarding />;
   }
   return <>{children}</>;
