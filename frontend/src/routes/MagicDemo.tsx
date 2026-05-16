@@ -462,18 +462,6 @@ export function MagicDemo() {
     disposeFinding(f, "resolved");
   };
 
-  const changeToSD = (f: Finding) => {
-    setResponses((prev) => ({
-      ...prev,
-      [visit]: {
-        ...(prev[visit] || empty()),
-        target: "Stable Disease",
-        overall: "Stable Disease",
-      },
-    }));
-    disposeFinding(f, "resolved");
-  };
-
   const flagForReview = (f: Finding, rationale: string) => {
     setFlagRationale((prev) => ({ ...prev, [findingKey(f)]: rationale }));
     disposeFinding(f, "flagged");
@@ -721,17 +709,9 @@ export function MagicDemo() {
             <IssueCallout
               finding={heroFinding}
               openCount={openFindings.length}
-              onChangeToSd={() => changeToSD(heroFinding)}
               onApplyFix={() => applyFix(heroFinding)}
               onAcknowledge={() => acknowledge(heroFinding)}
-              onFlag={() => {
-                const rationale = prompt(
-                  "Add a brief rationale for flagging this for investigator review:",
-                  "",
-                );
-                if (rationale != null)
-                  flagForReview(heroFinding, rationale);
-              }}
+              onFlag={(rationale) => flagForReview(heroFinding, rationale)}
               onViewTrajectory={
                 heroFinding.template_id === "RESPONSE_THRESHOLD"
                   ? () => setChartFinding(heroFinding)
@@ -1522,7 +1502,6 @@ function ResponseField({
 function IssueCallout({
   finding,
   openCount,
-  onChangeToSd,
   onApplyFix,
   onAcknowledge,
   onFlag,
@@ -1531,13 +1510,13 @@ function IssueCallout({
 }: {
   finding: Finding;
   openCount: number;
-  onChangeToSd: () => void;
   onApplyFix: () => void;
   onAcknowledge: () => void;
-  onFlag: () => void;
+  onFlag: (rationale: string) => void;
   onViewTrajectory: (() => void) | null;
   onSeeAll: (() => void) | null;
 }) {
+  const [flagOpen, setFlagOpen] = useState(false);
   const sev = finding.severity;
   const borderTone =
     sev === "Critical"
@@ -1584,32 +1563,32 @@ function IssueCallout({
         </ul>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
-        {/* Primary action varies by rule/severity */}
-        {finding.rule_id === "TR-RS-001" && (
-          <button className="btn btn-primary" onClick={onChangeToSd}>
-            Change to Stable Disease
-          </button>
-        )}
-        {finding.template_id === "STANDARDIZATION" && (
-          <button className="btn btn-primary" onClick={onApplyFix}>
-            Apply standardization
-          </button>
-        )}
-        {sev === "Critical" &&
-          finding.rule_id !== "TR-RS-001" && (
-            <button className="btn btn-danger" onClick={onFlag}>
+        {sev === "Critical" ? (
+          <>
+            <button
+              className="btn btn-primary"
+              onClick={() => setFlagOpen(true)}
+            >
               Flag for investigator
             </button>
-          )}
-        {sev === "Critical" && finding.rule_id === "TR-RS-001" && (
-          <button className="btn" onClick={onFlag}>
-            Flag for investigator
-          </button>
-        )}
-        {sev !== "Critical" && finding.template_id !== "STANDARDIZATION" && (
-          <button className="btn" onClick={onAcknowledge}>
-            Acknowledge
-          </button>
+            <span className="text-2xs text-slate-500 self-center">
+              Critical findings cannot be auto-corrected at the site — they
+              go to the investigator for review.
+            </span>
+          </>
+        ) : (
+          <>
+            {finding.template_id === "STANDARDIZATION" && (
+              <button className="btn btn-primary" onClick={onApplyFix}>
+                Apply standardization
+              </button>
+            )}
+            {finding.template_id !== "STANDARDIZATION" && (
+              <button className="btn" onClick={onAcknowledge}>
+                Acknowledge
+              </button>
+            )}
+          </>
         )}
         {onViewTrajectory && (
           <button className="btn" onClick={onViewTrajectory}>
@@ -1629,8 +1608,165 @@ function IssueCallout({
           )}
         </div>
       </div>
+      {flagOpen && (
+        <FlagInvestigatorModal
+          finding={finding}
+          onClose={() => setFlagOpen(false)}
+          onSend={(rationale) => {
+            setFlagOpen(false);
+            onFlag(rationale);
+          }}
+        />
+      )}
     </div>
   );
+}
+
+function FlagInvestigatorModal({
+  finding,
+  onClose,
+  onSend,
+}: {
+  finding: Finding;
+  onClose: () => void;
+  onSend: (rationale: string) => void;
+}) {
+  const draft = useMemo(() => buildFlagDraft(finding), [finding]);
+  const [text, setText] = useState(draft);
+  const [typing, setTyping] = useState(true);
+  const [shown, setShown] = useState("");
+
+  // Type the AI draft in like a stream so it feels generated, not pasted.
+  useEffect(() => {
+    setShown("");
+    setTyping(true);
+    let i = 0;
+    const id = window.setInterval(() => {
+      i += Math.max(2, Math.floor(draft.length / 80));
+      if (i >= draft.length) {
+        setShown(draft);
+        setTyping(false);
+        window.clearInterval(id);
+      } else {
+        setShown(draft.slice(0, i));
+      }
+    }, 20);
+    return () => window.clearInterval(id);
+  }, [draft]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !typing) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, typing]);
+
+  return (
+    <div
+      className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center px-4"
+      onClick={() => !typing && onClose()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="panel w-full max-w-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-stone-200 flex items-center gap-2">
+          <div>
+            <div className="text-sm font-semibold">
+              Flag for investigator
+            </div>
+            <div className="text-2xs text-slate-500 mono mt-0.5">
+              {finding.rule_id} · {finding.subject_id}
+              {finding.visit ? ` · ${finding.visit}` : ""}
+            </div>
+          </div>
+          {!typing && (
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="ml-auto text-slate-400 hover:text-slate-900 w-6 h-6 inline-flex items-center justify-center rounded hover:bg-stone-100"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="flex items-center gap-2 text-2xs">
+            <span className="px-1.5 py-0.5 rounded border border-accent-200 bg-accent-50 text-accent-700 font-medium">
+              AI-drafted
+            </span>
+            <span className="text-slate-500">
+              Review the message and edit before sending. Klin sends to the
+              investigator on record for {finding.subject_id}.
+            </span>
+          </div>
+          {typing ? (
+            <div className="field w-full min-h-[12rem] text-sm whitespace-pre-wrap leading-relaxed p-3 bg-stone-50">
+              {shown}
+              <span className="inline-block w-1.5 h-3.5 bg-slate-400 ml-0.5 align-middle animate-pulse" />
+            </div>
+          ) : (
+            <textarea
+              className="field w-full min-h-[12rem] text-sm leading-relaxed p-3"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
+          )}
+        </div>
+        <div className="px-5 py-3 border-t border-stone-200 flex items-center gap-3">
+          <span className="text-2xs text-slate-500">
+            Sends as a query in the investigator's queue. Visit can be
+            submitted once the query is open.
+          </span>
+          <button
+            className="btn ml-auto"
+            onClick={onClose}
+            disabled={typing}
+          >
+            Cancel
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={() => onSend(text)}
+            disabled={typing || !text.trim()}
+          >
+            {typing ? "Drafting…" : "Send to investigator →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildFlagDraft(f: Finding): string {
+  const subj = f.subject_id;
+  const visit = f.visit ? ` at ${f.visit}` : "";
+  const form = f.lineage.form ? `${f.lineage.form}` : "the affected form";
+  const field = f.lineage.field ? ` (${f.lineage.field})` : "";
+  const headline = ruleHeadline(f);
+  const summary = (f.user_message || "").trim();
+  const actions =
+    f.suggested_actions.length > 0
+      ? `\n\nSuggested next steps:\n${f.suggested_actions
+          .slice(0, 3)
+          .map((a) => `  • ${a}`)
+          .join("\n")}`
+      : "";
+  return `Investigator query — ${headline}
+
+Subject ${subj}${visit}
+Form: ${form}${field}
+
+${summary}${actions}
+
+Please review and advise on the correct value before this visit is
+submitted. Flagging from the site as the data on file does not reconcile
+with the rest of the visit.
+
+— A. Patel, Site coordinator`;
 }
 
 function DispositionedSummary({
