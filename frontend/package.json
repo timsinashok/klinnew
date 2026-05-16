@@ -18,7 +18,7 @@
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@types/react-is": "^19.2.0",
     "jszip": "^3.10.1",
-    "pdfjs-dist": "^5.4.624",
+    "pdfjs-dist": "^5.4.296",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-is": "^19.2.6",
