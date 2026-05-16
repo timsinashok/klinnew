@@ -14,16 +14,15 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 @pytest.fixture(scope="module")
 def report():
     findings = [f.to_dict() for f in run_all(load_data(DATA_DIR))]
-    # lineage is a Lineage dataclass; to_dict converts it. Confirm shape:
     for f in findings:
         assert isinstance(f["lineage"], dict)
-    truth = pd.read_csv(DATA_DIR / "expected_issues.csv")
+    truth = pd.read_csv(DATA_DIR / "final_issue_log.csv")
     return evaluate(findings, truth)
 
 
 def test_full_recall(report):
     assert report["recall"] == 1.0, report["missing"]
-    assert report["covered_count"] == 11
+    assert report["covered_count"] == 12
 
 
 def test_no_false_positives(report):

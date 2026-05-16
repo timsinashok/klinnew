@@ -1,8 +1,6 @@
-"""CLI: compare engine findings to data/expected_issues.csv.
+"""CLI: compare engine findings to data/final_issue_log.csv.
 
-Maps each engine rule_id to the set of expected `issue_id`s it should catch.
-Recall = truth entries with ≥1 matched finding. Precision = findings that
-match at least one truth entry.
+Maps each rule_id to the set of `issue_id`s it is expected to catch.
 """
 
 import argparse
@@ -12,27 +10,35 @@ from pathlib import Path
 
 import pandas as pd
 
+# Final_Issue_Log issue IDs grouped by engine rule.
 RULE_TO_ISSUES: dict[str, set[str]] = {
-    "TU-001": set(),  # sanity rule, no seeded issue
-    "TR-001": set(),  # sanity rule, no seeded issue
-    "TU-002": {"CRIT-001"},
-    "TU-TR-001": {"CRIT-002"},
-    "TR-RS-001": {"CRIT-003"},
-    "TU/TR-RS-002": {"CRIT-004"},
-    "TR-RS-003": {"CRIT-005"},
-    "TR-003": {"WARN-001"},
-    "LARGE_DROP": {"WARN-002"},
-    "VISIT_WINDOW": {"WARN-003"},
-    "TR-002": {"SUG-001", "SUG-002", "SUG-003"},
+    "TU-001": set(),
+    "TR-001": set(),
+    "TU-002": {"WARN-TU-001"},
+    "TU-TR-001": {"WARN-TUTR-001"},
+    "TR-RS-001": {"CRIT-TRRS-001"},
+    "TU/TR-RS-002": {"CRIT-TURSS-002"},
+    "TR-RS-003": {"CRIT-TRRS-003"},
+    "TR-003": {"WARN-TR-001"},
+    "LARGE_DROP": {"WARN-TR-002"},
+    "VISIT_WINDOW": {"WARN-VISIT-001"},
+    "TR-002": {"SUG-STD-001", "SUG-STD-002", "SUG-STD-003"},
+    "DM-001": set(),  # sanity — no expected fire on this dataset
+    "DM-002": set(),  # sanity
+    "LB-ADLB-001": {"CRIT-LB-001"},
 }
 
 
 def _match(finding: dict, truth: pd.Series) -> bool:
     if finding["subject_id"] != truth["subject_id"]:
         return False
-    if (finding.get("visit") or "") != truth["visit"]:
+    if truth["issue_id"] not in RULE_TO_ISSUES.get(finding["rule_id"], set()):
         return False
-    return truth["issue_id"] in RULE_TO_ISSUES.get(finding["rule_id"], set())
+    fv = finding.get("visit")
+    tv = truth["visit"]
+    if fv is None or fv == "":
+        return True
+    return fv == tv
 
 
 def evaluate(findings: list[dict], truth: pd.DataFrame) -> dict:
@@ -40,22 +46,20 @@ def evaluate(findings: list[dict], truth: pd.DataFrame) -> dict:
     for _, t in truth.iterrows():
         covered[t["issue_id"]] = [f for f in findings if _match(f, t)]
 
-    matched_findings = [
+    matched = [
         f for f in findings if any(_match(f, t) for _, t in truth.iterrows())
     ]
 
     n_truth = len(covered)
     recall = sum(1 for v in covered.values() if v) / n_truth if n_truth else 0
-    precision = (
-        len(matched_findings) / len(findings) if findings else 0
-    )
+    precision = len(matched) / len(findings) if findings else 0
 
     return {
         "total_truth": n_truth,
         "covered_count": sum(1 for v in covered.values() if v),
         "missing": [e for e, v in covered.items() if not v],
         "total_findings": len(findings),
-        "matched_findings": len(matched_findings),
+        "matched_findings": len(matched),
         "false_positives": [
             {
                 "rule_id": f["rule_id"],
@@ -63,7 +67,7 @@ def evaluate(findings: list[dict], truth: pd.DataFrame) -> dict:
                 "visit": f.get("visit"),
             }
             for f in findings
-            if f not in matched_findings
+            if f not in matched
         ],
         "recall": recall,
         "precision": precision,

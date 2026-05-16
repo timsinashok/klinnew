@@ -10,7 +10,7 @@ CITATION_DUP = (
 )
 
 
-@rule("TU-TR-001", severity="Critical", layer="Cross-domain")
+@rule("TU-TR-001", severity="Warning", layer="Cross-domain")
 def tu_tr_ghost_lesion(data: dict[str, pd.DataFrame]) -> list[Finding]:
     tu, tr = data["tu"], data["tr"]
     findings: list[Finding] = []
@@ -28,7 +28,7 @@ def tu_tr_ghost_lesion(data: dict[str, pd.DataFrame]) -> list[Finding]:
             findings.append(
                 Finding(
                     rule_id="TU-TR-001",
-                    severity="Critical",
+                    severity="Warning",
                     subject_id=usubjid,
                     visit=visit,
                     domain="TR",
@@ -64,7 +64,7 @@ def tu_tr_ghost_lesion(data: dict[str, pd.DataFrame]) -> list[Finding]:
     return findings
 
 
-@rule("TU-002", severity="Critical", layer="Within-domain")
+@rule("TU-002", severity="Warning", layer="Within-domain")
 def tu_duplicate_identity(data: dict[str, pd.DataFrame]) -> list[Finding]:
     tu = data["tu"]
     findings: list[Finding] = []
@@ -81,7 +81,7 @@ def tu_duplicate_identity(data: dict[str, pd.DataFrame]) -> list[Finding]:
         findings.append(
             Finding(
                 rule_id="TU-002",
-                severity="Critical",
+                severity="Warning",
                 subject_id=usubjid,
                 visit=first.get("VISIT") or None,
                 domain="TU",

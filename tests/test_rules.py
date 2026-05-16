@@ -23,8 +23,36 @@ def test_all_rules_registered():
         "TU-001", "TU-002", "TU-TR-001",
         "TR-001", "TR-002", "TR-003", "LARGE_DROP", "VISIT_WINDOW",
         "TR-RS-001", "TR-RS-003", "TU/TR-RS-002",
+        "DM-001", "DM-002", "LB-ADLB-001",
     }
     assert expected <= set(RULES.keys())
+
+
+def test_severity_rebanding(findings):
+    by_rule = {f.rule_id: f for f in findings}
+    # Critical-by-policy
+    for crit in ("TR-RS-001", "TR-RS-003", "TU/TR-RS-002", "LB-ADLB-001"):
+        if crit in by_rule:
+            assert by_rule[crit].severity == "Critical", crit
+    # Warning-by-policy (the rebanded ones)
+    for warn in ("TU-002", "TU-TR-001", "TR-003", "LARGE_DROP", "VISIT_WINDOW"):
+        if warn in by_rule:
+            assert by_rule[warn].severity == "Warning", warn
+
+
+def test_lb_adlb_001_catches_subj003_week16(findings):
+    fs = _by_rule(findings, "LB-ADLB-001")
+    assert [(f.subject_id, f.visit) for f in fs] == [("SUBJ003", "Week 16")]
+    f = fs[0]
+    assert f.template_params["total"] == 0.8
+    assert f.template_params["direct"] == 1.8
+
+
+def test_dm_eligibility_silent_on_clean_dataset(findings):
+    # All 5 subjects are 18+ and consent precedes screening, so DM rules
+    # are silent against this seed dataset.
+    assert _by_rule(findings, "DM-001") == []
+    assert _by_rule(findings, "DM-002") == []
 
 
 def test_tu_002_catches_subj005(findings):

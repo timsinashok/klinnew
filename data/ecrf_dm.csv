@@ -1,0 +1,6 @@
+subject_id,site_id,informed_consent_date,screening_date,treatment_start_date,age,age_unit,sex,race,ethnicity,country,diagnosis,stage,ECOG,prior_systemic_therapy_lines,histology_confirmed,measurable_disease_at_baseline,source_document_id,demo_issue_tag
+SUBJ001,101,2025-12-20,2025-12-27,2026-01-04,62,YEARS,M,WHITE,NOT HISPANIC OR LATINO,USA,Metastatic non-small cell lung cancer,IV,1,1,Yes,Yes,MDNOTE-SUBJ001-SCR,
+SUBJ002,101,2025-12-22,2025-12-29,2026-01-06,55,YEARS,F,ASIAN,NOT HISPANIC OR LATINO,USA,Metastatic colorectal cancer,IV,0,2,Yes,Yes,MDNOTE-SUBJ002-SCR,
+SUBJ003,102,2025-12-23,2025-12-30,2026-01-07,68,YEARS,M,BLACK OR AFRICAN AMERICAN,NOT HISPANIC OR LATINO,USA,Metastatic urothelial carcinoma,IV,1,1,Yes,Yes,MDNOTE-SUBJ003-SCR,
+SUBJ004,102,2025-12-25,2026-01-01,2026-01-09,47,YEARS,F,WHITE,HISPANIC OR LATINO,USA,Metastatic ovarian carcinoma,IV,1,2,Yes,Yes,MDNOTE-SUBJ004-SCR,
+SUBJ005,103,2025-12-27,2026-01-03,2026-01-11,59,YEARS,M,ASIAN,NOT HISPANIC OR LATINO,USA,Metastatic pancreatic adenocarcinoma,IV,2,1,Yes,Yes,MDNOTE-SUBJ005-SCR,
