@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { fetchSourceAnnotations, sourcePdfUrl } from "../api";
 import type { SourceAnnotation, SourceDocument } from "../types";
 
-// Bundle the pdf.js worker via Vite so we don't depend on a CDN being up
-// (and so the worker version stays in lockstep with pdfjs-dist).
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+// Pin the worker URL to react-pdf's bundled pdfjs version. This avoids the
+// API/Worker mismatch that happens if we ship a worker from a different
+// pdfjs-dist version than the one react-pdf imports internally.
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface Props {
   subject: string;
