@@ -1,5 +1,5 @@
-import { NavLink, useParams } from "react-router-dom";
-import { studyPath } from "../../lib/studies";
+import { Link, NavLink, useParams } from "react-router-dom";
+import { getStudy, studyPath } from "../../lib/studies";
 
 const ITEMS: { suffix: string; label: string; end?: boolean; icon: React.ReactNode }[] = [
   { suffix: "", label: "Home", end: true, icon: <HomeIcon /> },
@@ -9,9 +9,32 @@ const ITEMS: { suffix: string; label: string; end?: boolean; icon: React.ReactNo
 
 export function Nav() {
   const { studyId = "" } = useParams<{ studyId: string }>();
+  const study = getStudy(studyId);
   return (
     <nav className="w-52 border-r border-stone-200 bg-white shrink-0 flex flex-col">
-      <ul className="py-3">
+      <Link
+        to="/platform"
+        className="flex items-center gap-2 px-3 py-2.5 mx-2 mt-3 mb-1 text-2xs text-slate-500 hover:text-accent-700 hover:bg-stone-50 rounded transition group"
+        title="Back to all studies"
+      >
+        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span className="uppercase tracking-wider font-semibold">
+          All studies
+        </span>
+      </Link>
+      {study && (
+        <div className="mx-4 mb-2 pb-3 border-b border-stone-100">
+          <div className="mono text-2xs text-slate-400 truncate" title={study.id}>
+            {study.id}
+          </div>
+          <div className="text-xs font-medium text-slate-900 leading-snug mt-0.5 line-clamp-2">
+            {study.name}
+          </div>
+        </div>
+      )}
+      <ul className="pb-3">
         {ITEMS.map((i) => (
           <li key={i.suffix || "home"}>
             <NavLink
