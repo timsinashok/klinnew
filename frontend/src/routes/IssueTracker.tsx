@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { runEngine } from "../api";
 import { SeverityChip } from "../components/SeverityBadge";
+import { studyPath } from "../lib/studies";
 import type { Finding, Severity } from "../types";
 import { SEV_RANK } from "../ui/tokens";
 
 const SEVERITIES: Severity[] = ["Critical", "Warning", "Suggested Change"];
 
 export function IssueTracker() {
+  const { studyId = "" } = useParams<{ studyId: string }>();
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -190,7 +192,7 @@ export function IssueTracker() {
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <Link
                         to={{
-                          pathname: "/platform/visit",
+                          pathname: studyPath(studyId, "/visit"),
                           search: `?subject=${f.subject_id}${
                             f.visit
                               ? `&visit=${encodeURIComponent(f.visit)}`

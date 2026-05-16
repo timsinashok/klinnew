@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { studyPath } from "../lib/studies";
 import { fetchCsv, fetchSources, parseCsv, runEngine } from "../api";
 import { AwaitingSourceDocs } from "../components/AwaitingSourceDocs";
 import { ChartTemplate } from "../components/ChartTemplate";
@@ -834,11 +835,12 @@ function PatientHeader({
   onSubject: (s: string) => void;
   onVisit: (v: Visit) => void;
 }) {
+  const { studyId = "" } = useParams<{ studyId: string }>();
   return (
     <div className="bg-white border-b border-stone-200">
       <div className="max-w-6xl mx-auto px-8 py-5 flex items-end gap-6 flex-wrap">
         <Link
-          to="/"
+          to={studyPath(studyId)}
           className="text-2xs text-slate-500 hover:text-accent-700 mono"
         >
           ← Workspace

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchProtocol } from "../api";
 import { Wordmark } from "../components/shell/Wordmark";
 import { markProtocolUploaded } from "../lib/persistence";
+import { DEMO_STUDY, setCurrentStudy, studyPath } from "../lib/studies";
 import type { ProtocolResponse } from "../types";
 
 type Stage = "idle" | "extracting" | "ready";
@@ -62,9 +63,8 @@ export function Onboarding() {
 
   const onContinue = () => {
     markProtocolUploaded();
-    // Use a full assign so the AppShell + PlatformRouter remount and
-    // re-read localStorage cleanly.
-    window.location.assign("/platform");
+    setCurrentStudy(DEMO_STUDY.id);
+    window.location.assign(studyPath(DEMO_STUDY.id));
   };
 
   return (

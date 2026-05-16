@@ -1,19 +1,21 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useParams } from "react-router-dom";
+import { studyPath } from "../../lib/studies";
 
-const ITEMS: { to: string; label: string; end?: boolean; icon: React.ReactNode }[] = [
-  { to: "/platform", label: "Home", end: true, icon: <HomeIcon /> },
-  { to: "/platform/issues", label: "Issue tracker", icon: <IssueIcon /> },
-  { to: "/platform/datasets", label: "Datasets", icon: <DatasetIcon /> },
+const ITEMS: { suffix: string; label: string; end?: boolean; icon: React.ReactNode }[] = [
+  { suffix: "", label: "Home", end: true, icon: <HomeIcon /> },
+  { suffix: "/issues", label: "Issue tracker", icon: <IssueIcon /> },
+  { suffix: "/datasets", label: "Datasets", icon: <DatasetIcon /> },
 ];
 
 export function Nav() {
+  const { studyId = "" } = useParams<{ studyId: string }>();
   return (
     <nav className="w-52 border-r border-stone-200 bg-white shrink-0 flex flex-col">
       <ul className="py-3">
         {ITEMS.map((i) => (
-          <li key={i.to}>
+          <li key={i.suffix || "home"}>
             <NavLink
-              to={i.to}
+              to={studyPath(studyId, i.suffix)}
               end={i.end}
               className={({ isActive }) =>
                 `flex items-center gap-2 text-sm px-3 py-2 mx-2 rounded transition ${

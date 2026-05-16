@@ -6,6 +6,7 @@ import {
   newStudyId,
   saveStudy,
   setCurrentStudy,
+  studyPath,
   type Study,
 } from "../lib/studies";
 import type { ProtocolResponse } from "../types";
@@ -92,7 +93,7 @@ export function CreateStudy() {
     };
     saveStudy(study);
     setCurrentStudy(study.id);
-    window.location.assign("/platform");
+    window.location.assign(studyPath(study.id));
   };
 
   return (
@@ -105,7 +106,7 @@ export function CreateStudy() {
           / Studies / New
         </span>
         <Link
-          to="/studies"
+          to="/platform"
           className="ml-auto text-sm text-slate-500 hover:text-slate-900"
         >
           ← Back to studies
@@ -161,7 +162,7 @@ export function CreateStudy() {
               </div>
               <div className="flex items-center gap-3 pt-3 border-t border-stone-100">
                 <Link
-                  to="/studies"
+                  to="/platform"
                   className="text-2xs text-slate-500 hover:text-slate-900"
                 >
                   Cancel

@@ -1,9 +1,15 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useParams,
+} from "react-router-dom";
 import { AppShell } from "./components/shell/AppShell";
 import { isProtocolUploaded } from "./lib/persistence";
 import {
   DEMO_STUDY,
-  getCurrentStudyId,
+  getStudy,
   setCurrentStudy,
 } from "./lib/studies";
 import { CreateStudy } from "./routes/CreateStudy";
@@ -18,19 +24,16 @@ import { Sources } from "./routes/Sources";
 import { Studies } from "./routes/Studies";
 import { Workspace } from "./routes/Workspace";
 
-function PlatformRouter() {
-  const currentStudy = getCurrentStudyId();
-  if (!currentStudy) return <Navigate to="/studies" replace />;
-  if (currentStudy === DEMO_STUDY.id && !isProtocolUploaded()) {
+function StudyGuard({ children }: { children: React.ReactNode }) {
+  const { studyId = "" } = useParams<{ studyId: string }>();
+  const study = getStudy(studyId);
+  if (!study) return <Navigate to="/platform" replace />;
+  // Side-effect: keep localStorage current_study in sync with the URL so
+  // sub-components that still read it (UtilityBar, persistence helpers,
+  // SourceUploadModal etc.) operate on the right study.
+  if (typeof window !== "undefined") setCurrentStudy(study.id);
+  if (study.id === DEMO_STUDY.id && !isProtocolUploaded()) {
     return <Onboarding />;
-  }
-  return <Workspace />;
-}
-
-function StudyRoute({ children }: { children: React.ReactNode }) {
-  const currentStudy = getCurrentStudyId();
-  if (!currentStudy) {
-    setCurrentStudy(DEMO_STUDY.id);
   }
   return <>{children}</>;
 }
@@ -41,77 +44,104 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/welcome" element={<Navigate to="/" replace />} />
-        <Route path="/studies" element={<Studies />} />
-        <Route path="/studies/new" element={<CreateStudy />} />
-        <Route path="/setup" element={<Onboarding />} />
+
+        {/* Studies dashboard lives at /platform; no app shell here. */}
+        <Route path="/platform" element={<Studies />} />
+        <Route path="/platform/new" element={<CreateStudy />} />
+
+        {/* Per-study shell. studyId is part of the URL. */}
         <Route element={<AppShell />}>
-          <Route path="/platform" element={<PlatformRouter />} />
           <Route
-            path="/platform/protocol"
+            path="/platform/:studyId"
             element={
-              <StudyRoute>
+              <StudyGuard>
+                <Workspace />
+              </StudyGuard>
+            }
+          />
+          <Route
+            path="/platform/:studyId/protocol"
+            element={
+              <StudyGuard>
                 <Protocol />
-              </StudyRoute>
+              </StudyGuard>
             }
           />
           <Route
-            path="/platform/sources"
+            path="/platform/:studyId/sources"
             element={
-              <StudyRoute>
+              <StudyGuard>
                 <Sources />
-              </StudyRoute>
+              </StudyGuard>
             }
           />
           <Route
-            path="/platform/visit"
+            path="/platform/:studyId/visit"
             element={
-              <StudyRoute>
+              <StudyGuard>
                 <MagicDemo />
-              </StudyRoute>
+              </StudyGuard>
             }
           />
           <Route
-            path="/platform/pipeline"
+            path="/platform/:studyId/pipeline"
             element={
-              <StudyRoute>
+              <StudyGuard>
                 <PipelineDemo />
-              </StudyRoute>
+              </StudyGuard>
             }
           />
           <Route
-            path="/platform/issues"
+            path="/platform/:studyId/issues"
             element={
-              <StudyRoute>
+              <StudyGuard>
                 <IssueTracker />
-              </StudyRoute>
+              </StudyGuard>
             }
           />
           <Route
-            path="/platform/datasets"
+            path="/platform/:studyId/datasets"
             element={
-              <StudyRoute>
+              <StudyGuard>
                 <Datasets />
-              </StudyRoute>
+              </StudyGuard>
             }
-          />
-          {/* Legacy / shorter aliases — useful for old bookmarks. */}
-          <Route
-            path="/protocol"
-            element={<Navigate to="/platform/protocol" replace />}
-          />
-          <Route
-            path="/sources"
-            element={<Navigate to="/platform/sources" replace />}
-          />
-          <Route
-            path="/magic"
-            element={<Navigate to="/platform/visit" replace />}
-          />
-          <Route
-            path="/pipeline"
-            element={<Navigate to="/platform/pipeline" replace />}
           />
         </Route>
+
+        {/* Legacy aliases — preserve old bookmarks. */}
+        <Route path="/studies" element={<Navigate to="/platform" replace />} />
+        <Route
+          path="/studies/new"
+          element={<Navigate to="/platform/new" replace />}
+        />
+        <Route path="/setup" element={<Onboarding />} />
+        <Route
+          path="/protocol"
+          element={
+            <Navigate
+              to={`/platform/${DEMO_STUDY.id}/protocol`}
+              replace
+            />
+          }
+        />
+        <Route
+          path="/sources"
+          element={
+            <Navigate to={`/platform/${DEMO_STUDY.id}/sources`} replace />
+          }
+        />
+        <Route
+          path="/magic"
+          element={<Navigate to={`/platform/${DEMO_STUDY.id}/visit`} replace />}
+        />
+        <Route
+          path="/pipeline"
+          element={
+            <Navigate to={`/platform/${DEMO_STUDY.id}/pipeline`} replace />
+          }
+        />
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

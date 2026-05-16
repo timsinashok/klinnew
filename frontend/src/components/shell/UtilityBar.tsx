@@ -16,7 +16,7 @@ export function UtilityBar({ llmOn }: Props) {
       </Link>
       <Sep />
       <Link
-        to="/studies"
+        to="/platform"
         className="flex items-center text-xs gap-1.5 hover:text-accent-700 group"
         title="Switch study"
       >

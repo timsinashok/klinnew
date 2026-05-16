@@ -96,6 +96,10 @@ export function markVisitedApp(): void {
   localStorage.setItem(VISITED_KEY, "true");
 }
 
+export function studyPath(studyId: string, suffix = ""): string {
+  return `/platform/${encodeURIComponent(studyId)}${suffix}`;
+}
+
 export function newStudyId(name: string): string {
   const slug = name
     .toLowerCase()

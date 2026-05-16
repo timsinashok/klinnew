@@ -6,7 +6,7 @@ export function Landing() {
   const navigate = useNavigate();
   const onOpen = () => {
     markVisitedApp();
-    navigate("/studies");
+    navigate("/platform");
   };
   return (
     <div className="min-h-screen bg-[#fafaf8] text-slate-900 flex flex-col">
@@ -122,7 +122,7 @@ export function Landing() {
                 Open the demo study →
               </button>
               <Link
-                to="/studies"
+                to="/platform"
                 className="text-sm text-slate-600 hover:text-slate-900"
               >
                 Or browse studies

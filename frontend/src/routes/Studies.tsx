@@ -5,6 +5,7 @@ import {
   deleteStudy,
   listStudies,
   setCurrentStudy,
+  studyPath,
   type Study,
 } from "../lib/studies";
 
@@ -13,7 +14,7 @@ export function Studies() {
 
   const open = (s: Study) => {
     setCurrentStudy(s.id);
-    window.location.assign("/platform");
+    window.location.assign(studyPath(s.id));
   };
 
   const remove = (s: Study) => {
@@ -30,7 +31,7 @@ export function Studies() {
         </Link>
         <span className="ml-3 text-2xs text-slate-500 mono">/ Studies</span>
         <Link
-          to="/welcome"
+          to="/"
           className="ml-auto text-sm text-slate-500 hover:text-slate-900"
         >
           About
@@ -49,7 +50,7 @@ export function Studies() {
               new study from a protocol PDF.
             </p>
           </div>
-          <Link to="/studies/new" className="btn btn-primary">
+          <Link to="/platform/new" className="btn btn-primary">
             + Create study
           </Link>
         </div>
@@ -157,7 +158,7 @@ function StudyCard({
 function CreateTile() {
   return (
     <Link
-      to="/studies/new"
+      to="/platform/new"
       className="panel p-5 flex flex-col items-center justify-center text-center border-dashed border-2 border-stone-300 hover:border-accent-300 hover:bg-stone-50 transition"
     >
       <div className="w-10 h-10 rounded-full bg-accent-50 text-accent-700 inline-flex items-center justify-center mb-3">

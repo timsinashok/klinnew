@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { fetchCsv, parseCsv, runEngine } from "../api";
 import { SeverityChip } from "../components/SeverityBadge";
 import { SkeletonGrid } from "../components/Skeleton";
+import { studyPath } from "../lib/studies";
 import type { Finding } from "../types";
 import { SEV_RANK } from "../ui/tokens";
 
@@ -167,6 +168,7 @@ export function PipelineDemo() {
 }
 
 function Overview({ findings }: { findings: Finding[] }) {
+  const { studyId = "" } = useParams<{ studyId: string }>();
   const subj = "SUBJ001";
   const heroForSubject = findings.find(
     (f) =>
@@ -188,7 +190,7 @@ function Overview({ findings }: { findings: Finding[] }) {
         n={1}
         title="Protocol upload"
         sub="Synthetic protocol KLIN-ONC-DEMO-001 is parsed; 12 deterministic checks are derived from its 7 sections."
-        cta={{ to: "/platform/protocol", label: "Open protocol view →" }}
+        cta={{ to: studyPath(studyId, "/protocol"), label: "Open protocol view →" }}
       >
         <div className="mono text-2xs text-slate-600">
           DM-001 · DM-002 · TU-001 · TU-002 · TU-TR-001 · TR-002 · TR-003 ·
@@ -199,7 +201,7 @@ function Overview({ findings }: { findings: Finding[] }) {
         n={2}
         title="Source document upload"
         sub="80 radiology, lab, pathology, and clinic-note documents extracted with line-level traceability."
-        cta={{ to: "/platform/sources", label: "Browse 80 documents →" }}
+        cta={{ to: studyPath(studyId, "/sources"), label: "Browse 80 documents →" }}
       >
         <div className="grid grid-cols-4 gap-1.5 text-2xs">
           {["RAD · 35", "LAB · 35", "PATH · 5", "MD · 5"].map((s) => (
@@ -735,6 +737,7 @@ function formatNum(n: unknown): string {
 // --- Step 4 — translated ---------------------------------------------------
 
 function Step4({ finding }: { finding: Finding }) {
+  const { studyId = "" } = useParams<{ studyId: string }>();
   return (
     <div className="panel border-accent-200 bg-accent-50/40 p-4">
       <div className="flex items-center gap-2 mb-2">
@@ -757,7 +760,7 @@ function Step4({ finding }: { finding: Finding }) {
         </ul>
       )}
       <div className="mt-4 flex items-center gap-3">
-        <Link to="/platform/visit" className="btn btn-primary">
+        <Link to={studyPath(studyId, "/visit")} className="btn btn-primary">
           Open in coordinator view
         </Link>
         <span className="text-2xs text-slate-500">

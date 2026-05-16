@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { fetchStats, runEngine } from "../api";
 import { SeverityChip } from "../components/SeverityBadge";
 import {
@@ -9,23 +9,23 @@ import {
 } from "../lib/persistence";
 import {
   DEMO_STUDY,
-  getCurrentStudyId,
   getStudy,
+  studyPath,
 } from "../lib/studies";
 import type { Finding, Severity, Stats, SubjectStat } from "../types";
 import { SEV_BADGE_CLASS, SEV_RANK } from "../ui/tokens";
 
 export function Workspace() {
-  const currentId = getCurrentStudyId() || DEMO_STUDY.id;
-  const currentStudy = getStudy(currentId) || DEMO_STUDY;
+  const { studyId = "" } = useParams<{ studyId: string }>();
+  const currentStudy = getStudy(studyId) || DEMO_STUDY;
   const isDemoStudy = currentStudy.is_demo;
 
   if (!isDemoStudy) return <EmptyStudy study={currentStudy} />;
 
-  return <DemoStudyWorkspace />;
+  return <DemoStudyWorkspace studyId={currentStudy.id} />;
 }
 
-function DemoStudyWorkspace() {
+function DemoStudyWorkspace({ studyId }: { studyId: string }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
@@ -137,15 +137,17 @@ function DemoStudyWorkspace() {
             findingsBySubject={findingsBySubject}
             localState={localState}
             loading={stats === null}
+            studyId={studyId}
           />
           <FindingsStream
             findings={findingsStream}
             loading={findings === null}
             total={(findings || []).length}
+            studyId={studyId}
           />
         </div>
 
-        <ActionTiles />
+        <ActionTiles studyId={studyId} />
       </div>
     </div>
   );
@@ -321,11 +323,13 @@ function SubjectRoster({
   findingsBySubject,
   localState,
   loading,
+  studyId,
 }: {
   subjects: SubjectStat[] | undefined;
   findingsBySubject: Map<string, Finding[]>;
   localState: Map<string, { submitted: Set<string>; ingested: Set<string> }>;
   loading: boolean;
+  studyId: string;
 }) {
   return (
     <section className="panel overflow-hidden">
@@ -337,7 +341,7 @@ function SubjectRoster({
           </div>
         </div>
         <Link
-          to="/platform/visit"
+          to={studyPath(studyId, "/visit")}
           className="text-2xs text-accent-700 hover:text-accent-800 font-medium"
         >
           Open SUBJ001 →
@@ -472,7 +476,7 @@ function SubjectRoster({
                   <td className="px-4 py-3 text-right">
                     <Link
                       to={{
-                        pathname: "/platform/visit",
+                        pathname: studyPath(studyId, "/visit"),
                         search: `?subject=${s.subject_id}${
                           s.latest_visit
                             ? `&visit=${encodeURIComponent(s.latest_visit)}`
@@ -531,10 +535,12 @@ function FindingsStream({
   findings,
   loading,
   total,
+  studyId,
 }: {
   findings: Finding[];
   loading: boolean;
   total: number;
+  studyId: string;
 }) {
   return (
     <section className="panel">
@@ -548,7 +554,7 @@ function FindingsStream({
           </div>
         </div>
         <Link
-          to="/platform/issues"
+          to={studyPath(studyId, "/issues")}
           className="text-2xs text-accent-700 hover:text-accent-800 font-medium"
         >
           All issues →
@@ -598,11 +604,11 @@ function FindingsStream({
 
 // ---------------------------------------------------------------------------
 
-function ActionTiles() {
+function ActionTiles({ studyId }: { studyId: string }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       <Link
-        to="/platform/visit"
+        to={studyPath(studyId, "/visit")}
         className="panel p-5 hover:border-accent-300 transition group"
       >
         <div className="kicker">Coordinator view</div>
@@ -619,7 +625,7 @@ function ActionTiles() {
         </div>
       </Link>
       <Link
-        to="/platform/pipeline"
+        to={studyPath(studyId, "/pipeline")}
         className="panel p-5 hover:border-accent-300 transition group"
       >
         <div className="kicker">How a finding gets caught</div>
@@ -636,7 +642,7 @@ function ActionTiles() {
         </div>
       </Link>
       <Link
-        to="/platform/datasets"
+        to={studyPath(studyId, "/datasets")}
         className="panel p-5 hover:border-accent-300 transition group"
       >
         <div className="kicker">Deliverables</div>
@@ -677,7 +683,7 @@ function EmptyStudy({
           </div>
           <div className="flex items-center gap-3">
             <Link
-              to="/studies"
+              to="/platform"
               className="btn"
             >
               Switch study
@@ -704,7 +710,7 @@ function EmptyStudy({
           <div className="text-2xs text-slate-500 mt-6 max-w-xl mx-auto leading-snug">
             Want to see Klin running against a populated study right now?{" "}
             <Link
-              to="/studies"
+              to="/platform"
               className="text-accent-700 hover:text-accent-800 underline-offset-2 hover:underline"
             >
               Open the demo study
