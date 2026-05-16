@@ -20,7 +20,9 @@ interface Props {
   onToggle: () => void;
 }
 
-const PANEL_PAGE_WIDTH = 410;
+// Panel width as a fraction of viewport. The page canvas is sized to fill
+// the panel minus padding via a ResizeObserver on the inner container.
+const PANEL_VW_PERCENT = 30;
 
 export function SourcePdfPanel({
   subject,
@@ -73,7 +75,10 @@ export function SourcePdfPanel({
   }
 
   return (
-    <aside className="w-[440px] border-l border-stone-200 bg-stone-50 flex flex-col">
+    <aside
+      className="border-l border-stone-200 bg-stone-50 flex flex-col shrink-0"
+      style={{ width: `${PANEL_VW_PERCENT}vw`, minWidth: 320 }}
+    >
       <div className="px-3 py-2 border-b border-stone-200 bg-white flex items-center gap-2 shrink-0">
         <div>
           <div className="text-2xs uppercase tracking-wider text-slate-500 font-semibold">
@@ -165,7 +170,27 @@ function PdfViewer({
   const [pageNum, setPageNum] = useState(1);
   const [annotations, setAnnotations] = useState<SourceAnnotation[]>([]);
   const [pageBaseWidth, setPageBaseWidth] = useState<number>(612);
+  const [renderWidth, setRenderWidth] = useState<number>(400);
   const containerRef = useRef<HTMLDivElement>(null);
+  const sizerRef = useRef<HTMLDivElement>(null);
+
+  // Resize the rendered page to fill the panel minus padding.
+  useEffect(() => {
+    const el = sizerRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = Math.floor(el.getBoundingClientRect().width) - 8;
+      if (w > 80) setRenderWidth(w);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -198,7 +223,7 @@ function PdfViewer({
     return () => window.clearTimeout(t);
   }, [focusedFieldKey, annotations, pageNum]);
 
-  const scale = PANEL_PAGE_WIDTH / pageBaseWidth;
+  const scale = renderWidth / pageBaseWidth;
   const pageAnnotations = annotations.filter((a) => a.page === pageNum);
 
   return (
@@ -226,17 +251,20 @@ function PdfViewer({
           {annotations.length === 1 ? "" : "s"}
         </span>
       </div>
-      <div className="p-3 flex justify-center">
-        <div className="relative inline-block shadow-sm">
+      <div className="p-3" ref={sizerRef}>
+        <div
+          className="relative shadow-sm mx-auto"
+          style={{ width: renderWidth }}
+        >
           <Document
             file={sourcePdfUrl(doc.source_document_id)}
             onLoadSuccess={({ numPages: n }) => setNumPages(n)}
-            loading={<PdfLoading />}
-            error={<PdfError />}
+            loading={<PdfLoading width={renderWidth} />}
+            error={<PdfError width={renderWidth} />}
           >
             <Page
               pageNumber={pageNum}
-              width={PANEL_PAGE_WIDTH}
+              width={renderWidth}
               renderTextLayer={false}
               renderAnnotationLayer={false}
             />
@@ -321,22 +349,22 @@ function formColour(form: string): {
   };
 }
 
-function PdfLoading() {
+function PdfLoading({ width }: { width: number }) {
   return (
     <div
       className="bg-white border border-stone-200 flex items-center justify-center text-2xs text-slate-400"
-      style={{ width: PANEL_PAGE_WIDTH, height: PANEL_PAGE_WIDTH * 1.29 }}
+      style={{ width, height: width * 1.29 }}
     >
       Loading PDF…
     </div>
   );
 }
 
-function PdfError() {
+function PdfError({ width }: { width: number }) {
   return (
     <div
       className="bg-white border border-sev-critical-200 flex items-center justify-center text-2xs text-sev-critical-700"
-      style={{ width: PANEL_PAGE_WIDTH, height: PANEL_PAGE_WIDTH * 1.29 }}
+      style={{ width, height: width * 1.29 }}
     >
       Could not load PDF.
     </div>
