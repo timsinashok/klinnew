@@ -296,7 +296,8 @@ export function MagicDemo() {
   }, [visitParam, submitted, nextVisit]);
 
   const visitSubmitted = submitted.has(visit);
-  const visitIngested = ingested.has(visit) || visit === "Screening";
+  const isScreening = (visit as string) === "Screening";
+  const visitIngested = ingested.has(visit) || isScreening;
   const endOfStudy = nextVisit === null;
 
   // Source documents available for the current (subject, visit) pair.
@@ -480,8 +481,51 @@ export function MagicDemo() {
   const acknowledge = (f: Finding) => disposeFinding(f, "acknowledged");
 
   const ran = allFindings !== null;
-  const submitBlocked = visitSubmitted || !ran || hasOpenCritical;
   const responseRow = responses[visit] || empty();
+
+  // Required-field validation per visit type. Returns the list of human
+  // labels that are still empty.
+  const missingRequiredFields = useMemo(() => {
+    const missing: string[] = [];
+    if (visit === "Screening") {
+      if (!demographics) return missing;
+      const reqDM: { label: string; key: string }[] = [
+        { label: "Age", key: "age" },
+        { label: "Sex", key: "sex" },
+        { label: "Diagnosis", key: "diagnosis" },
+        { label: "ECOG", key: "ECOG" },
+        { label: "Informed consent date", key: "informed_consent_date" },
+        { label: "Screening date", key: "screening_date" },
+      ];
+      for (const f of reqDM) {
+        const v = (demographics[f.key] || "").toString().trim();
+        if (!v) missing.push(f.label);
+      }
+    } else if (visitIngested) {
+      // Tumor measurements for TARGET lesions at this visit.
+      for (const l of lesions.filter((l) => l.category === "TARGET")) {
+        const v = (l.measurements[visit] || "").trim();
+        if (!v) missing.push(`Measurement · ${l.id}`);
+      }
+      // Disease Response: all four codes required (skip for Baseline since
+      // we hide Disease Response there).
+      if (visit !== "Baseline") {
+        if (!responseRow.target.trim()) missing.push("Target response");
+        if (!responseRow.nontarget.trim())
+          missing.push("Non-target response");
+        if (!responseRow.newlesions.trim()) missing.push("New lesions");
+        if (!responseRow.overall.trim()) missing.push("Overall response");
+      }
+    }
+    return missing;
+  }, [visit, visitIngested, demographics, lesions, responseRow]);
+
+  const submitBlocked =
+    visitSubmitted ||
+    (!isScreening && !visitIngested) ||
+    (!isScreening && !ran) ||
+    hasOpenCritical ||
+    missingRequiredFields.length > 0;
 
   const runCheckForThisVisit = async () => {
     setRunning(true);
@@ -568,7 +612,7 @@ export function MagicDemo() {
             <EndOfStudy subject={subject} onReset={resetSubject} />
           ) : visitSubmitted ? (
             <ReadOnlyVisitBanner visit={visit} />
-          ) : (
+          ) : !visitIngested && !isScreening ? null /* RunBar hidden until docs uploaded */ : (
             <RunBar
               ran={ran}
               running={running}
@@ -581,7 +625,16 @@ export function MagicDemo() {
           {loading ? (
             <SkeletonTwo />
           ) : visit === "Screening" ? (
-            <Demographics dm={demographics} heroFinding={heroFinding} />
+            <Demographics
+              dm={demographics}
+              heroFinding={heroFinding}
+              missing={new Set(missingRequiredFields)}
+              onChange={(k, v) =>
+                setDemographics((prev) =>
+                  prev ? { ...prev, [k]: v } : { [k]: v },
+                )
+              }
+            />
           ) : !visitIngested && !visitSubmitted ? (
             <AwaitingSourceDocs
               subject={subject}
@@ -628,7 +681,7 @@ export function MagicDemo() {
             </>
           )}
 
-          {!loading && heroFinding && (
+          {!loading && (visitIngested || isScreening) && heroFinding && (
             <IssueCallout
               finding={heroFinding}
               openCount={openFindings.length}
@@ -656,17 +709,22 @@ export function MagicDemo() {
             />
           )}
 
-          {!loading && dispositionedFindings.length > 0 && (
-            <DispositionedSummary
-              dispositionedFindings={dispositionedFindings}
-              dispositions={dispositions}
-              flagRationale={flagRationale}
-              onSeeAll={() => setAllFindingsOpen(true)}
-              hasOpen={openFindings.length > 0}
-            />
-          )}
+          {!loading &&
+            (visitIngested || isScreening) &&
+            dispositionedFindings.length > 0 && (
+              <DispositionedSummary
+                dispositionedFindings={dispositionedFindings}
+                dispositions={dispositions}
+                flagRationale={flagRationale}
+                onSeeAll={() => setAllFindingsOpen(true)}
+                hasOpen={openFindings.length > 0}
+              />
+            )}
 
-          {!loading && ran && visitFindings.length === 0 && <CleanVisit />}
+          {!loading &&
+            (visitIngested || isScreening) &&
+            ran &&
+            visitFindings.length === 0 && <CleanVisit />}
         </div>
       </div>
 
@@ -682,6 +740,7 @@ export function MagicDemo() {
         openOtherCount={openFindings.filter(
           (f) => f.severity !== "Critical",
         ).length}
+        missingFields={missingRequiredFields}
         onSubmit={submitVisit}
         onReset={resetSubject}
       />
@@ -1585,9 +1644,13 @@ function CleanVisit() {
 function Demographics({
   dm,
   heroFinding,
+  onChange,
+  missing,
 }: {
   dm: Record<string, string> | null;
   heroFinding: Finding | null;
+  onChange: (key: string, value: string) => void;
+  missing: Set<string>;
 }) {
   const flagAge = heroFinding?.rule_id === "DM-001";
   const flagConsent = heroFinding?.rule_id === "DM-002";
@@ -1598,26 +1661,90 @@ function Demographics({
       </div>
     );
   }
-  const fields: { label: string; key: string; flagged?: boolean }[] = [
-    { label: "Age", key: "age", flagged: flagAge },
-    { label: "Age unit", key: "age_unit" },
-    { label: "Sex", key: "sex" },
-    { label: "Race", key: "race" },
-    { label: "Ethnicity", key: "ethnicity" },
+  type FieldDef = {
+    label: string;
+    key: string;
+    flagged?: boolean;
+    type?: "text" | "date" | "select" | "number";
+    options?: string[];
+  };
+  const fields: FieldDef[] = [
+    { label: "Age", key: "age", flagged: flagAge, type: "number" },
+    {
+      label: "Age unit",
+      key: "age_unit",
+      type: "select",
+      options: ["YEARS", "MONTHS"],
+    },
+    { label: "Sex", key: "sex", type: "select", options: ["F", "M", "U"] },
+    {
+      label: "Race",
+      key: "race",
+      type: "select",
+      options: [
+        "WHITE",
+        "BLACK OR AFRICAN AMERICAN",
+        "ASIAN",
+        "AMERICAN INDIAN OR ALASKA NATIVE",
+        "NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER",
+        "OTHER",
+        "UNKNOWN",
+      ],
+    },
+    {
+      label: "Ethnicity",
+      key: "ethnicity",
+      type: "select",
+      options: ["HISPANIC OR LATINO", "NOT HISPANIC OR LATINO", "UNKNOWN"],
+    },
     { label: "Country", key: "country" },
     { label: "Diagnosis", key: "diagnosis" },
-    { label: "Stage", key: "stage" },
-    { label: "ECOG", key: "ECOG" },
-    { label: "Prior systemic therapy lines", key: "prior_systemic_therapy_lines" },
-    { label: "Histology confirmed", key: "histology_confirmed" },
-    { label: "Measurable disease at baseline", key: "measurable_disease_at_baseline" },
+    {
+      label: "Stage",
+      key: "stage",
+      type: "select",
+      options: ["I", "II", "III", "IV", "IV (metastatic)"],
+    },
+    {
+      label: "ECOG",
+      key: "ECOG",
+      type: "select",
+      options: ["0", "1", "2", "3", "4"],
+    },
+    {
+      label: "Prior systemic therapy lines",
+      key: "prior_systemic_therapy_lines",
+      type: "number",
+    },
+    {
+      label: "Histology confirmed",
+      key: "histology_confirmed",
+      type: "select",
+      options: ["Yes", "No"],
+    },
+    {
+      label: "Measurable disease at baseline",
+      key: "measurable_disease_at_baseline",
+      type: "select",
+      options: ["Yes", "No"],
+    },
     {
       label: "Informed consent date",
       key: "informed_consent_date",
       flagged: flagConsent,
+      type: "date",
     },
-    { label: "Screening date", key: "screening_date", flagged: flagConsent },
-    { label: "Treatment start date", key: "treatment_start_date" },
+    {
+      label: "Screening date",
+      key: "screening_date",
+      flagged: flagConsent,
+      type: "date",
+    },
+    {
+      label: "Treatment start date",
+      key: "treatment_start_date",
+      type: "date",
+    },
   ];
   return (
     <section>
@@ -1630,8 +1757,12 @@ function Demographics({
           <DmField
             key={f.key}
             label={f.label}
-            value={dm[f.key] ?? "—"}
+            value={dm[f.key] ?? ""}
             flagged={!!f.flagged}
+            type={f.type || "text"}
+            options={f.options}
+            missing={missing.has(f.label)}
+            onChange={(v) => onChange(f.key, v)}
           />
         ))}
       </div>
@@ -1643,11 +1774,26 @@ function DmField({
   label,
   value,
   flagged,
+  type,
+  options,
+  missing,
+  onChange,
 }: {
   label: string;
   value: string;
   flagged: boolean;
+  type: "text" | "date" | "select" | "number";
+  options?: string[];
+  missing: boolean;
+  onChange: (v: string) => void;
 }) {
+  const cls = `field w-full h-9 text-sm ${
+    flagged ? "is-flagged-critical border-sev-critical-500 bg-sev-critical-50" : ""
+  } ${
+    missing && !flagged
+      ? "border-sev-warning-400 bg-sev-warning-50/30"
+      : ""
+  }`;
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-1">
@@ -1660,16 +1806,34 @@ function DmField({
             !
           </span>
         )}
+        {missing && !flagged && (
+          <span className="text-2xs text-sev-warning-700">required</span>
+        )}
       </div>
-      <input
-        readOnly
-        value={value}
-        className={`field w-full h-9 text-sm ${
-          flagged
-            ? "is-flagged-critical border-sev-critical-500 bg-sev-critical-50"
-            : ""
-        }`}
-      />
+      {type === "select" && options ? (
+        <select
+          className={cls}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          <option value=""></option>
+          {(options.includes(value) || !value
+            ? options
+            : [...options, value]
+          ).map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={type}
+          className={cls}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
     </div>
   );
 }
@@ -1811,6 +1975,7 @@ function SubmitFooter({
   endOfStudy,
   openCriticalCount,
   openOtherCount,
+  missingFields,
   onSubmit,
   onReset,
 }: {
@@ -1821,12 +1986,23 @@ function SubmitFooter({
   endOfStudy: boolean;
   openCriticalCount: number;
   openOtherCount: number;
+  missingFields: string[];
   onSubmit: () => void;
   onReset: () => void;
 }) {
   let msg: React.ReactNode = `${visit} ready to submit.`;
   if (endOfStudy) msg = "All visits submitted for this subject.";
   else if (visitSubmitted) msg = `${visit} already submitted.`;
+  else if (missingFields.length > 0)
+    msg = (
+      <span className="text-sev-warning-700">
+        Required field{missingFields.length === 1 ? "" : "s"} empty:{" "}
+        <span className="mono">
+          {missingFields.slice(0, 4).join(", ")}
+          {missingFields.length > 4 ? ` +${missingFields.length - 4} more` : ""}
+        </span>
+      </span>
+    );
   else if (!ran) msg = `Run a consistency check on ${visit} before submitting.`;
   else if (openCriticalCount > 0)
     msg = (
