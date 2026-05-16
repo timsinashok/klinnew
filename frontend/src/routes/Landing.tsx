@@ -16,10 +16,16 @@ export function Landing() {
         </Link>
         <nav className="ml-auto flex items-center gap-2 text-sm">
           <a
-            href="#how-it-works"
+            href="#insight"
             className="text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded"
           >
-            How it works
+            The insight
+          </a>
+          <a
+            href="#checks"
+            className="text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded"
+          >
+            What we check
           </a>
           <a
             href="#pipeline"
@@ -40,68 +46,122 @@ export function Landing() {
               Built with pharma and CRO partners · private beta
             </div>
             <h1 className="serif font-medium leading-[1.04] text-[56px] tracking-tight">
-              Six months of SAS programming, done before lunch.
+              Catch the inconsistency before it enters the database.
             </h1>
             <p className="text-base text-slate-600 max-w-xl mt-6 leading-relaxed">
-              Klin ingests your EDC export and produces CDISC-compliant SDTM,
-              ADaM, and TFL deliverables — auditable, validated, and
-              FDA-ready. Every finding traces back to the source line that
-              produced it.
+              Klin runs protocol, cross-domain, and medical-plausibility
+              checks the moment a site coordinator fills in an eCRF —
+              against this visit's data and the patient's history. The
+              query gets resolved at the source, in plain language, not
+              six weeks later in a data manager's queue.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <button onClick={onOpen} className="btn btn-primary h-10 px-5">
-                Run a sample study →
+                Open the demo →
               </button>
               <a
-                href="#how-it-works"
+                href="#insight"
                 className="btn h-10 px-5"
               >
-                Watch 90s demo
+                Read the insight
               </a>
             </div>
             <div className="mt-10 flex items-center gap-10 text-sm">
-              <Stat top="6 mo → 4 hr" bottom="study turnaround" />
-              <Stat top="100%" bottom="CDISC compliant" />
-              <Stat top="$0" bottom="SAS licenses needed" />
+              <Stat top="≈90%" bottom="queries resolved at source" />
+              <Stat top="3 layers" bottom="protocol · cross-domain · medical" />
+              <Stat top="raw → ADaM" bottom="end-to-end pipeline" />
             </div>
           </div>
           <TerminalCard />
         </section>
 
         <section
-          id="how-it-works"
+          id="insight"
           className="border-t border-stone-200 bg-white"
         >
           <div className="max-w-5xl mx-auto px-6 py-14">
-            <div className="kicker mb-3">The problem</div>
-            <h2 className="serif font-medium text-[36px] leading-tight tracking-tight max-w-2xl">
-              Clinical data engineering hasn't changed since 1998.
+            <div className="kicker mb-3">The insight</div>
+            <h2 className="serif font-medium text-[36px] leading-tight tracking-tight max-w-3xl">
+              Fix the data when it's typed, not when a data manager finds it
+              weeks later.
             </h2>
+            <p className="text-base text-slate-600 max-w-3xl mt-5 leading-relaxed">
+              Existing validators — Pinnacle 21, custom SAS programs — sit at
+              the sponsor and only run after the EDC export. By then the
+              visit is over, the imaging report is filed, and resolving a
+              query takes days of back-and-forth between the data manager,
+              the site coordinator, and the investigator.
+            </p>
             <p className="text-base text-slate-600 max-w-3xl mt-4 leading-relaxed">
-              Every Phase II study still consumes 6+ months of SAS programming,
-              custom mapping, and manual reconciliation. We replaced all of
-              it with one pipeline.
+              We moved the checks to the moment of entry. When the site
+              coordinator fills in the eCRF, Klin compares the new values
+              against the protocol, the historical record across every
+              domain, and basic medical plausibility — and either auto-fixes
+              the suggestion or routes the query to the investigator while
+              the patient is still in the clinic.
+            </p>
+            <p className="text-base text-slate-700 max-w-3xl mt-5 leading-relaxed font-medium">
+              ~90% of the queries that would normally land in the data
+              manager's queue are rectified before they ever leave the site.
+            </p>
+          </div>
+        </section>
+
+        <section
+          id="checks"
+          className="border-t border-stone-200"
+        >
+          <div className="max-w-5xl mx-auto px-6 py-14">
+            <div className="kicker mb-3">What we check</div>
+            <h2 className="serif font-medium text-[36px] leading-tight tracking-tight">
+              Three layers, one engine, every visit.
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+              <CheckCard
+                tag="Layer 1"
+                title="Protocol checks"
+                body="Klin parses the study protocol PDF and derives the deterministic eligibility, visit-window, and assessment rules. Every rule is auditable back to the section that produced it."
+                example="ECOG ≤ 1 at screening · imaging method consistent with baseline"
+              />
+              <CheckCard
+                tag="Layer 2"
+                title="Cross-domain inconsistency"
+                body="Each new value is checked against the patient's history across every domain we hold — TU, TR, RS, DM, LB. Ghost lesions, math that doesn't reconcile, term drift get caught."
+                example="Target response = PR, but measurements show only 11% decrease"
+              />
+              <CheckCard
+                tag="Layer 3"
+                title="Medical plausibility"
+                body="Domain-knowledge checks the engine can run before a human ever sees the form. Severity is tri-banded: Critical blocks submit, Warning queries the investigator, Suggested offers a one-click fix."
+                example="Overall CR conflicts with a non-target lesion still recorded as present"
+              />
+            </div>
+            <p className="text-sm text-slate-600 mt-8 max-w-3xl leading-relaxed">
+              The findings are auditable artifacts — every one carries the
+              rule id, the protocol citation, and the exact eCRF + source
+              document lineage that produced it. The site sees plain
+              English; the regulator sees the trace.
             </p>
           </div>
         </section>
 
         <section
           id="pipeline"
-          className="border-t border-stone-200"
+          className="border-t border-stone-200 bg-white"
         >
           <div className="max-w-5xl mx-auto px-6 py-14">
             <div className="kicker mb-3">The pipeline</div>
             <h2 className="serif font-medium text-[36px] leading-tight tracking-tight">
-              Protocol → SDTM → findings, in six deterministic steps.
+              Raw data → SDTM → ADaM, with the queries cleaned up in place.
             </h2>
             <ol className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {[
-                ["Protocol upload", "Klin parses the PDF and derives checks."],
-                ["Source documents", "Radiology, lab, pathology, MD notes."],
-                ["eCRF fill", "Mapped fields land in eCRF-style forms."],
-                ["SDTM standardize", "Controlled terminology applied."],
-                ["Layered checks", "Cross-domain medical analysis runs."],
-                ["Actionable UI", "Critical blocks · Warning queries · Suggested fixes."],
+                ["Protocol upload", "Klin parses the PDF and derives the deterministic rule catalog."],
+                ["Source documents", "Radiology, central lab, pathology, and clinic notes drop in side-by-side."],
+                ["eCRF fill", "Extracted facts pre-populate the form; coordinator reviews and edits."],
+                ["Run consistency check", "Protocol + cross-domain + medical plausibility, against current and historical data."],
+                ["Resolve at source", "Critical blocks submit · Warning sends an investigator query · Suggested auto-fixes."],
+                ["SDTM + ADaM out", "Clean data lands as CDISC-compliant deliverables — no post-hoc reconciliation."],
               ].map(([t, b], i) => (
                 <li
                   key={t}
@@ -150,6 +210,36 @@ function Stat({ top, bottom }: { top: string; bottom: string }) {
   );
 }
 
+function CheckCard({
+  tag,
+  title,
+  body,
+  example,
+}: {
+  tag: string;
+  title: string;
+  body: string;
+  example: string;
+}) {
+  return (
+    <div className="panel p-5 flex flex-col h-full">
+      <div className="mono text-2xs text-accent-700 font-semibold uppercase tracking-wider">
+        {tag}
+      </div>
+      <div className="text-base font-semibold mt-1.5">{title}</div>
+      <p className="text-sm text-slate-600 mt-2 leading-snug flex-1">
+        {body}
+      </p>
+      <div className="mt-3 pt-3 border-t border-stone-100">
+        <div className="kicker mb-1">Example</div>
+        <div className="text-2xs text-slate-700 mono leading-snug">
+          {example}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TerminalCard() {
   return (
     <div className="terminal text-2xs">
@@ -157,38 +247,37 @@ function TerminalCard() {
         <span className="w-2 h-2 rounded-full bg-rose-400" />
         <span className="w-2 h-2 rounded-full bg-amber-400" />
         <span className="w-2 h-2 rounded-full bg-emerald-400" />
-        <span className="ml-2 muted">study-ONCD-2451 · run.log</span>
+        <span className="ml-2 muted">SUBJ001 · Week 16 · run.log</span>
         <span className="ml-auto bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded text-[10px]">
           live
         </span>
       </div>
       <div>
-        <span className="prompt">$</span> klin run --study{" "}
-        <span className="key">ONCD-2451</span>
+        <span className="prompt">$</span> klin check --visit{" "}
+        <span className="key">"Week 16"</span>
       </div>
-      <div className="muted">– ingesting EDC export (Medidata Rave)</div>
+      <div className="muted">– loading SUBJ001 history (baseline, Week 8)</div>
       <div>
-        <span className="muted">– </span>1,247 subjects · 18,331 records
-      </div>
-      <div>
-        <span className="ok">✓</span> SDTM mapping · 24 domains generated
-        <span className="ok ml-2">+1.8s</span>
+        <span className="muted">– </span>protocol rules: 12 · cross-domain: 4 ·
+        medical: 3
       </div>
       <div>
-        <span className="ok">✓</span> ADaM derivations · ADSL · ADAE · ADLB ·
-        ADVS{" "}
-        <span className="ok ml-2">+2.4s</span>
+        <span className="ok">✓</span> protocol layer · 12/12 pass
+        <span className="ok ml-2">+0.4s</span>
       </div>
       <div>
-        <span className="ok">✓</span> Pinnacle 21 validation · 0 errors · 3
-        warnings <span className="ok ml-2">+0.4s</span>
+        <span className="ok">✓</span> cross-domain layer · 3/4 pass
       </div>
       <div>
-        <span className="ok">✓</span> TFL output · 14 tables · 6 figures · 8
-        listings <span className="ok ml-2">+2.1s</span>
+        <span className="bad">✗</span> TR-RS-001 · Target response = PR but
+        target-sum decrease is 11% (need ≥30%)
+      </div>
+      <div>
+        <span className="muted">→ </span>callout shown on Disease Response form
       </div>
       <div className="mt-2">
-        <span className="prompt">$</span> done in 3h 41s
+        <span className="prompt">$</span>{" "}
+        <span className="muted"># coordinator updates response → re-runs → clean → submits</span>
       </div>
     </div>
   );
