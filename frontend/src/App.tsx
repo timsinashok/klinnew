@@ -7,6 +7,8 @@ import {
   setCurrentStudy,
 } from "./lib/studies";
 import { CreateStudy } from "./routes/CreateStudy";
+import { Datasets } from "./routes/Datasets";
+import { IssueTracker } from "./routes/IssueTracker";
 import { Landing } from "./routes/Landing";
 import { MagicDemo } from "./routes/MagicDemo";
 import { Onboarding } from "./routes/Onboarding";
@@ -73,6 +75,22 @@ export default function App() {
             element={
               <StudyRoute>
                 <PipelineDemo />
+              </StudyRoute>
+            }
+          />
+          <Route
+            path="/platform/issues"
+            element={
+              <StudyRoute>
+                <IssueTracker />
+              </StudyRoute>
+            }
+          />
+          <Route
+            path="/platform/datasets"
+            element={
+              <StudyRoute>
+                <Datasets />
               </StudyRoute>
             }
           />

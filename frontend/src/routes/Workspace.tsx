@@ -548,10 +548,10 @@ function FindingsStream({
           </div>
         </div>
         <Link
-          to="/platform/pipeline"
+          to="/platform/issues"
           className="text-2xs text-accent-700 hover:text-accent-800 font-medium"
         >
-          Trace →
+          All issues →
         </Link>
       </div>
       <ul>
@@ -636,19 +636,19 @@ function ActionTiles() {
         </div>
       </Link>
       <Link
-        to="/platform/sources"
+        to="/platform/datasets"
         className="panel p-5 hover:border-accent-300 transition group"
       >
-        <div className="kicker">What fed the eCRF</div>
+        <div className="kicker">Deliverables</div>
         <div className="text-base font-semibold mt-1.5 group-hover:text-accent-700">
-          Source documents
+          Datasets
         </div>
         <p className="text-sm text-slate-600 mt-1.5 leading-snug">
-          Radiology, central lab, pathology, and clinic notes. See the
-          extracted text and the SDTM fields each document populated.
+          Download the SDTM domains (DM, TU, TR, RS, LB) the pipeline has
+          produced so far, plus the eCRF rows that fed them.
         </p>
         <div className="text-sm text-accent-700 mt-3 font-medium">
-          Browse 80 documents →
+          Browse datasets →
         </div>
       </Link>
     </div>
