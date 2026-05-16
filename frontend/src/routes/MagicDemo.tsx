@@ -764,7 +764,9 @@ export function MagicDemo() {
             visitFindings.length === 0 && <CleanVisit />}
         </div>
         </div>
-        {visitIngested && visitSourceDocs.length > 0 && (
+        {visitIngested &&
+          visitSourceDocs.length > 0 &&
+          (visit as string).startsWith("Week") && (
           <SourcePdfPanel
             subject={subject}
             visit={visit}

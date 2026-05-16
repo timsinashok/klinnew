@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { fetchSourceAnnotations, sourcePdfUrl } from "../api";
 import type { SourceAnnotation, SourceDocument } from "../types";
 
-// Wire up the pdf.js worker from a CDN matching the installed pdfjs-dist.
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+// Bundle the pdf.js worker via Vite so we don't depend on a CDN being up
+// (and so the worker version stays in lockstep with pdfjs-dist).
+pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 interface Props {
   subject: string;
