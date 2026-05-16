@@ -7,10 +7,25 @@ import {
   loadIngested,
   loadSubmissions,
 } from "../lib/persistence";
+import {
+  DEMO_STUDY,
+  getCurrentStudyId,
+  getStudy,
+} from "../lib/studies";
 import type { Finding, Severity, Stats, SubjectStat } from "../types";
 import { SEV_BADGE_CLASS, SEV_RANK } from "../ui/tokens";
 
 export function Workspace() {
+  const currentId = getCurrentStudyId() || DEMO_STUDY.id;
+  const currentStudy = getStudy(currentId) || DEMO_STUDY;
+  const isDemoStudy = currentStudy.is_demo;
+
+  if (!isDemoStudy) return <EmptyStudy study={currentStudy} />;
+
+  return <DemoStudyWorkspace />;
+}
+
+function DemoStudyWorkspace() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
@@ -636,6 +651,84 @@ function ActionTiles() {
           Browse 80 documents →
         </div>
       </Link>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function EmptyStudy({
+  study,
+}: {
+  study: { id: string; name: string; sponsor: string; criteria: string; protocol_name: string };
+}) {
+  return (
+    <div className="min-h-full bg-[#fafaf8]">
+      <div className="border-b border-stone-200 bg-white">
+        <div className="max-w-7xl mx-auto px-8 py-5 flex items-end justify-between gap-6">
+          <div>
+            <div className="kicker mb-1">Active study</div>
+            <h1 className="text-[26px] leading-tight serif font-medium">
+              {study.name}
+            </h1>
+            <div className="text-sm text-slate-600 mt-1 mono">
+              {study.id} · {study.sponsor} · {study.criteria}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link
+              to="/studies"
+              className="btn"
+            >
+              Switch study
+            </Link>
+          </div>
+        </div>
+      </div>
+      <div className="max-w-3xl mx-auto px-8 py-12 space-y-6">
+        <div className="panel p-8 text-center">
+          <div className="w-12 h-12 mx-auto mb-3 inline-flex items-center justify-center rounded-full bg-accent-50 text-accent-700">
+            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M16 4v4M8 4v4M3 10h18M5 6h14a2 2 0 012 2v11a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z" strokeLinecap="round" />
+            </svg>
+          </div>
+          <div className="serif text-[22px] font-medium leading-tight mb-2">
+            No subjects enrolled yet
+          </div>
+          <p className="text-sm text-slate-600 max-w-xl mx-auto leading-snug">
+            Klin has parsed{" "}
+            <span className="mono">{study.protocol_name}</span> and derived
+            the deterministic checks for this study. Subjects will appear
+            here as your sites enroll them and capture their first visits.
+          </p>
+          <div className="text-2xs text-slate-500 mt-6 max-w-xl mx-auto leading-snug">
+            Want to see Klin running against a populated study right now?{" "}
+            <Link
+              to="/studies"
+              className="text-accent-700 hover:text-accent-800 underline-offset-2 hover:underline"
+            >
+              Open the demo study
+            </Link>{" "}
+            — five subjects, eighty source documents, twelve seeded findings
+            covering DM, LB, TU, TR, and RS.
+          </div>
+        </div>
+        <div className="panel p-5">
+          <div className="kicker mb-2">What's next</div>
+          <ol className="text-sm text-slate-700 space-y-2 list-decimal list-inside leading-snug">
+            <li>Enrol the first subject and capture screening data.</li>
+            <li>
+              At each visit, upload the radiology and central-lab PDFs into the
+              eCRF. Klin pre-fills the form fields and runs the consistency
+              check.
+            </li>
+            <li>
+              The data manager queue surfaces every Critical / Warning /
+              Suggested finding with one-click actions.
+            </li>
+          </ol>
+        </div>
+      </div>
     </div>
   );
 }

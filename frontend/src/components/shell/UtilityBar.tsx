@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+import { DEMO_STUDY, getCurrentStudyId, getStudy } from "../../lib/studies";
 import { Wordmark } from "./Wordmark";
 
 interface Props {
@@ -5,11 +7,29 @@ interface Props {
 }
 
 export function UtilityBar({ llmOn }: Props) {
+  const sid = getCurrentStudyId() || DEMO_STUDY.id;
+  const study = getStudy(sid) || DEMO_STUDY;
   return (
     <header className="h-12 border-b border-stone-200 bg-white flex items-center px-4 gap-3 shrink-0">
-      <Wordmark />
+      <Link to="/studies" className="hover:opacity-80">
+        <Wordmark />
+      </Link>
       <Sep />
-      <Pill label="Study">KLIN-ONC-DEMO-001</Pill>
+      <Link
+        to="/studies"
+        className="flex items-center text-xs gap-1.5 hover:text-accent-700 group"
+        title="Switch study"
+      >
+        <span className="text-slate-500 group-hover:text-accent-700">
+          Study
+        </span>
+        <span className="mono text-slate-900 group-hover:text-accent-800 px-1.5 py-0.5 bg-stone-100 rounded">
+          {study.id}
+        </span>
+        <span className="text-slate-400 group-hover:text-accent-700 text-2xs">
+          ▾
+        </span>
+      </Link>
       <Pill label="Site">042 · Memorial Cancer Center</Pill>
       <div className="ml-auto flex items-center gap-3 text-xs text-slate-600">
         <span className="flex items-center gap-1.5">

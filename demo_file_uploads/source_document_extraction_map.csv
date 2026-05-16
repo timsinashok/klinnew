@@ -1,0 +1,151 @@
+file_name,source_document_id,target_domain,target_variables_or_fields,source_fields_expected
+RAD-SUBJ001-BL__Radiology_Report.pdf,RAD-SUBJ001-BL,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ001-BL__Radiology_Report.pdf,RAD-SUBJ001-BL,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ001-BL__Radiology_Report.pdf,RAD-SUBJ001-BL,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ001-Week8__Radiology_Report.pdf,RAD-SUBJ001-Week8,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ001-Week8__Radiology_Report.pdf,RAD-SUBJ001-Week8,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ001-Week8__Radiology_Report.pdf,RAD-SUBJ001-Week8,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ001-Week16__Radiology_Report.pdf,RAD-SUBJ001-Week16,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ001-Week16__Radiology_Report.pdf,RAD-SUBJ001-Week16,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ001-Week16__Radiology_Report.pdf,RAD-SUBJ001-Week16,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ001-Week24__Radiology_Report.pdf,RAD-SUBJ001-Week24,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ001-Week24__Radiology_Report.pdf,RAD-SUBJ001-Week24,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ001-Week24__Radiology_Report.pdf,RAD-SUBJ001-Week24,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ001-Week32__Radiology_Report.pdf,RAD-SUBJ001-Week32,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ001-Week32__Radiology_Report.pdf,RAD-SUBJ001-Week32,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ001-Week32__Radiology_Report.pdf,RAD-SUBJ001-Week32,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ001-Week40__Radiology_Report.pdf,RAD-SUBJ001-Week40,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ001-Week40__Radiology_Report.pdf,RAD-SUBJ001-Week40,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ001-Week40__Radiology_Report.pdf,RAD-SUBJ001-Week40,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ001-Week48__Radiology_Report.pdf,RAD-SUBJ001-Week48,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ001-Week48__Radiology_Report.pdf,RAD-SUBJ001-Week48,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ001-Week48__Radiology_Report.pdf,RAD-SUBJ001-Week48,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ002-BL__Radiology_Report.pdf,RAD-SUBJ002-BL,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ002-BL__Radiology_Report.pdf,RAD-SUBJ002-BL,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ002-BL__Radiology_Report.pdf,RAD-SUBJ002-BL,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ002-Week8__Radiology_Report.pdf,RAD-SUBJ002-Week8,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ002-Week8__Radiology_Report.pdf,RAD-SUBJ002-Week8,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ002-Week8__Radiology_Report.pdf,RAD-SUBJ002-Week8,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ002-Week16__Radiology_Report.pdf,RAD-SUBJ002-Week16,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ002-Week16__Radiology_Report.pdf,RAD-SUBJ002-Week16,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ002-Week16__Radiology_Report.pdf,RAD-SUBJ002-Week16,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ002-Week24__Radiology_Report.pdf,RAD-SUBJ002-Week24,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ002-Week24__Radiology_Report.pdf,RAD-SUBJ002-Week24,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ002-Week24__Radiology_Report.pdf,RAD-SUBJ002-Week24,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ002-Week32__Radiology_Report.pdf,RAD-SUBJ002-Week32,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ002-Week32__Radiology_Report.pdf,RAD-SUBJ002-Week32,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ002-Week32__Radiology_Report.pdf,RAD-SUBJ002-Week32,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ002-Week40__Radiology_Report.pdf,RAD-SUBJ002-Week40,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ002-Week40__Radiology_Report.pdf,RAD-SUBJ002-Week40,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ002-Week40__Radiology_Report.pdf,RAD-SUBJ002-Week40,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ002-Week48__Radiology_Report.pdf,RAD-SUBJ002-Week48,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ002-Week48__Radiology_Report.pdf,RAD-SUBJ002-Week48,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ002-Week48__Radiology_Report.pdf,RAD-SUBJ002-Week48,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ003-BL__Radiology_Report.pdf,RAD-SUBJ003-BL,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ003-BL__Radiology_Report.pdf,RAD-SUBJ003-BL,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ003-BL__Radiology_Report.pdf,RAD-SUBJ003-BL,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ003-Week8__Radiology_Report.pdf,RAD-SUBJ003-Week8,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ003-Week8__Radiology_Report.pdf,RAD-SUBJ003-Week8,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ003-Week8__Radiology_Report.pdf,RAD-SUBJ003-Week8,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ003-Week16__Radiology_Report.pdf,RAD-SUBJ003-Week16,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ003-Week16__Radiology_Report.pdf,RAD-SUBJ003-Week16,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ003-Week16__Radiology_Report.pdf,RAD-SUBJ003-Week16,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ003-Week24__Radiology_Report.pdf,RAD-SUBJ003-Week24,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ003-Week24__Radiology_Report.pdf,RAD-SUBJ003-Week24,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ003-Week24__Radiology_Report.pdf,RAD-SUBJ003-Week24,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ003-Week32__Radiology_Report.pdf,RAD-SUBJ003-Week32,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ003-Week32__Radiology_Report.pdf,RAD-SUBJ003-Week32,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ003-Week32__Radiology_Report.pdf,RAD-SUBJ003-Week32,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ003-Week40__Radiology_Report.pdf,RAD-SUBJ003-Week40,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ003-Week40__Radiology_Report.pdf,RAD-SUBJ003-Week40,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ003-Week40__Radiology_Report.pdf,RAD-SUBJ003-Week40,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ003-Week48__Radiology_Report.pdf,RAD-SUBJ003-Week48,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ003-Week48__Radiology_Report.pdf,RAD-SUBJ003-Week48,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ003-Week48__Radiology_Report.pdf,RAD-SUBJ003-Week48,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ004-BL__Radiology_Report.pdf,RAD-SUBJ004-BL,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ004-BL__Radiology_Report.pdf,RAD-SUBJ004-BL,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ004-BL__Radiology_Report.pdf,RAD-SUBJ004-BL,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ004-Week8__Radiology_Report.pdf,RAD-SUBJ004-Week8,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ004-Week8__Radiology_Report.pdf,RAD-SUBJ004-Week8,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ004-Week8__Radiology_Report.pdf,RAD-SUBJ004-Week8,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ004-Week16__Radiology_Report.pdf,RAD-SUBJ004-Week16,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ004-Week16__Radiology_Report.pdf,RAD-SUBJ004-Week16,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ004-Week16__Radiology_Report.pdf,RAD-SUBJ004-Week16,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ004-Week24__Radiology_Report.pdf,RAD-SUBJ004-Week24,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ004-Week24__Radiology_Report.pdf,RAD-SUBJ004-Week24,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ004-Week24__Radiology_Report.pdf,RAD-SUBJ004-Week24,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ004-Week32__Radiology_Report.pdf,RAD-SUBJ004-Week32,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ004-Week32__Radiology_Report.pdf,RAD-SUBJ004-Week32,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ004-Week32__Radiology_Report.pdf,RAD-SUBJ004-Week32,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ004-Week40__Radiology_Report.pdf,RAD-SUBJ004-Week40,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ004-Week40__Radiology_Report.pdf,RAD-SUBJ004-Week40,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ004-Week40__Radiology_Report.pdf,RAD-SUBJ004-Week40,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ004-Week48__Radiology_Report.pdf,RAD-SUBJ004-Week48,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ004-Week48__Radiology_Report.pdf,RAD-SUBJ004-Week48,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ004-Week48__Radiology_Report.pdf,RAD-SUBJ004-Week48,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ005-BL__Radiology_Report.pdf,RAD-SUBJ005-BL,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ005-BL__Radiology_Report.pdf,RAD-SUBJ005-BL,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ005-BL__Radiology_Report.pdf,RAD-SUBJ005-BL,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ005-Week8__Radiology_Report.pdf,RAD-SUBJ005-Week8,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ005-Week8__Radiology_Report.pdf,RAD-SUBJ005-Week8,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ005-Week8__Radiology_Report.pdf,RAD-SUBJ005-Week8,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ005-Week16__Radiology_Report.pdf,RAD-SUBJ005-Week16,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ005-Week16__Radiology_Report.pdf,RAD-SUBJ005-Week16,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ005-Week16__Radiology_Report.pdf,RAD-SUBJ005-Week16,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ005-Week24__Radiology_Report.pdf,RAD-SUBJ005-Week24,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ005-Week24__Radiology_Report.pdf,RAD-SUBJ005-Week24,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ005-Week24__Radiology_Report.pdf,RAD-SUBJ005-Week24,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ005-Week32__Radiology_Report.pdf,RAD-SUBJ005-Week32,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ005-Week32__Radiology_Report.pdf,RAD-SUBJ005-Week32,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ005-Week32__Radiology_Report.pdf,RAD-SUBJ005-Week32,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ005-Week40__Radiology_Report.pdf,RAD-SUBJ005-Week40,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ005-Week40__Radiology_Report.pdf,RAD-SUBJ005-Week40,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ005-Week40__Radiology_Report.pdf,RAD-SUBJ005-Week40,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+RAD-SUBJ005-Week48__Radiology_Report.pdf,RAD-SUBJ005-Week48,TU,"TULNKID, TUSTRESC, TULOC, TUMETHOD, TUDTC",Lesion ID/category/location/method/date
+RAD-SUBJ005-Week48__Radiology_Report.pdf,RAD-SUBJ005-Week48,TR,"TRLNKID, TRTESTCD, TRORRES, TRSTRESN, TRSTRESU, TRDTC",Tumor diameter and tumor state by visit
+RAD-SUBJ005-Week48__Radiology_Report.pdf,RAD-SUBJ005-Week48,RS,"RSTESTCD, RSORRES, RSSTRESC, RSDTC",RECIST target/non-target/new lesion/overall response
+PATH-SUBJ001-SCR__Pathology_Report.pdf,PATH-SUBJ001-SCR,DM,"DMDTC, diagnosis source fields, histology_confirmed",Pathology diagnosis and confirmation evidence
+PATH-SUBJ002-SCR__Pathology_Report.pdf,PATH-SUBJ002-SCR,DM,"DMDTC, diagnosis source fields, histology_confirmed",Pathology diagnosis and confirmation evidence
+PATH-SUBJ003-SCR__Pathology_Report.pdf,PATH-SUBJ003-SCR,DM,"DMDTC, diagnosis source fields, histology_confirmed",Pathology diagnosis and confirmation evidence
+PATH-SUBJ004-SCR__Pathology_Report.pdf,PATH-SUBJ004-SCR,DM,"DMDTC, diagnosis source fields, histology_confirmed",Pathology diagnosis and confirmation evidence
+PATH-SUBJ005-SCR__Pathology_Report.pdf,PATH-SUBJ005-SCR,DM,"DMDTC, diagnosis source fields, histology_confirmed",Pathology diagnosis and confirmation evidence
+MDNOTE-SUBJ001-SCR__Doctor_Note.pdf,MDNOTE-SUBJ001-SCR,DM,"USUBJID, AGE, AGEU, SEX, RACE, ETHNIC, COUNTRY, RFICDTC, RFXSTDTC",Demographics and screening eligibility
+MDNOTE-SUBJ002-SCR__Doctor_Note.pdf,MDNOTE-SUBJ002-SCR,DM,"USUBJID, AGE, AGEU, SEX, RACE, ETHNIC, COUNTRY, RFICDTC, RFXSTDTC",Demographics and screening eligibility
+MDNOTE-SUBJ003-SCR__Doctor_Note.pdf,MDNOTE-SUBJ003-SCR,DM,"USUBJID, AGE, AGEU, SEX, RACE, ETHNIC, COUNTRY, RFICDTC, RFXSTDTC",Demographics and screening eligibility
+MDNOTE-SUBJ004-SCR__Doctor_Note.pdf,MDNOTE-SUBJ004-SCR,DM,"USUBJID, AGE, AGEU, SEX, RACE, ETHNIC, COUNTRY, RFICDTC, RFXSTDTC",Demographics and screening eligibility
+MDNOTE-SUBJ005-SCR__Doctor_Note.pdf,MDNOTE-SUBJ005-SCR,DM,"USUBJID, AGE, AGEU, SEX, RACE, ETHNIC, COUNTRY, RFICDTC, RFXSTDTC",Demographics and screening eligibility
+LAB-SUBJ001-BL__Central_Lab_Report.pdf,LAB-SUBJ001-BL,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ001-Week8__Central_Lab_Report.pdf,LAB-SUBJ001-Week8,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ001-Week16__Central_Lab_Report.pdf,LAB-SUBJ001-Week16,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ001-Week24__Central_Lab_Report.pdf,LAB-SUBJ001-Week24,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ001-Week32__Central_Lab_Report.pdf,LAB-SUBJ001-Week32,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ001-Week40__Central_Lab_Report.pdf,LAB-SUBJ001-Week40,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ001-Week48__Central_Lab_Report.pdf,LAB-SUBJ001-Week48,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ002-BL__Central_Lab_Report.pdf,LAB-SUBJ002-BL,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ002-Week8__Central_Lab_Report.pdf,LAB-SUBJ002-Week8,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ002-Week16__Central_Lab_Report.pdf,LAB-SUBJ002-Week16,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ002-Week24__Central_Lab_Report.pdf,LAB-SUBJ002-Week24,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ002-Week32__Central_Lab_Report.pdf,LAB-SUBJ002-Week32,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ002-Week40__Central_Lab_Report.pdf,LAB-SUBJ002-Week40,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ002-Week48__Central_Lab_Report.pdf,LAB-SUBJ002-Week48,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ003-BL__Central_Lab_Report.pdf,LAB-SUBJ003-BL,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ003-Week8__Central_Lab_Report.pdf,LAB-SUBJ003-Week8,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ003-Week16__Central_Lab_Report.pdf,LAB-SUBJ003-Week16,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ003-Week24__Central_Lab_Report.pdf,LAB-SUBJ003-Week24,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ003-Week32__Central_Lab_Report.pdf,LAB-SUBJ003-Week32,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ003-Week40__Central_Lab_Report.pdf,LAB-SUBJ003-Week40,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ003-Week48__Central_Lab_Report.pdf,LAB-SUBJ003-Week48,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ004-BL__Central_Lab_Report.pdf,LAB-SUBJ004-BL,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ004-Week8__Central_Lab_Report.pdf,LAB-SUBJ004-Week8,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ004-Week16__Central_Lab_Report.pdf,LAB-SUBJ004-Week16,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ004-Week24__Central_Lab_Report.pdf,LAB-SUBJ004-Week24,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ004-Week32__Central_Lab_Report.pdf,LAB-SUBJ004-Week32,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ004-Week40__Central_Lab_Report.pdf,LAB-SUBJ004-Week40,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ004-Week48__Central_Lab_Report.pdf,LAB-SUBJ004-Week48,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ005-BL__Central_Lab_Report.pdf,LAB-SUBJ005-BL,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ005-Week8__Central_Lab_Report.pdf,LAB-SUBJ005-Week8,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ005-Week16__Central_Lab_Report.pdf,LAB-SUBJ005-Week16,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ005-Week24__Central_Lab_Report.pdf,LAB-SUBJ005-Week24,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ005-Week32__Central_Lab_Report.pdf,LAB-SUBJ005-Week32,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ005-Week40__Central_Lab_Report.pdf,LAB-SUBJ005-Week40,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
+LAB-SUBJ005-Week48__Central_Lab_Report.pdf,LAB-SUBJ005-Week48,LB,"LBTESTCD, LBORRES, LBORRESU, LBSTRESN, LBSTRESU, LBDTC, LBNRIND",Lab result and reference range data
