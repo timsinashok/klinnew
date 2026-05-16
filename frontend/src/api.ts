@@ -1,4 +1,12 @@
-import type { Finding, RunResponse, Stats } from "./types";
+import type {
+  DomainResponse,
+  Finding,
+  ProtocolResponse,
+  RunResponse,
+  SourceDocument,
+  SourcesResponse,
+  Stats,
+} from "./types";
 
 const BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 
@@ -15,6 +23,30 @@ export async function runEngine(
 export async function fetchStats(): Promise<Stats> {
   const r = await fetch(`${BASE}/api/stats`);
   if (!r.ok) throw new Error(`stats failed: ${r.status}`);
+  return await r.json();
+}
+
+export async function fetchProtocol(): Promise<ProtocolResponse> {
+  const r = await fetch(`${BASE}/api/protocol`);
+  if (!r.ok) throw new Error(`protocol failed: ${r.status}`);
+  return await r.json();
+}
+
+export async function fetchSources(): Promise<SourcesResponse> {
+  const r = await fetch(`${BASE}/api/sources`);
+  if (!r.ok) throw new Error(`sources failed: ${r.status}`);
+  return await r.json();
+}
+
+export async function fetchSource(id: string): Promise<SourceDocument> {
+  const r = await fetch(`${BASE}/api/sources/${encodeURIComponent(id)}`);
+  if (!r.ok) throw new Error(`source ${id} failed: ${r.status}`);
+  return await r.json();
+}
+
+export async function fetchDomain(name: string): Promise<DomainResponse> {
+  const r = await fetch(`${BASE}/api/domain/${name}`);
+  if (!r.ok) throw new Error(`domain ${name} failed: ${r.status}`);
   return await r.json();
 }
 

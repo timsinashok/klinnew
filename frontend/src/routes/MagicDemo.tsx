@@ -12,6 +12,7 @@ import type { Finding } from "../types";
 import { SEV_RANK } from "../ui/tokens";
 
 const VISITS = [
+  "Screening",
   "Baseline",
   "Week 8",
   "Week 16",
@@ -76,6 +77,10 @@ export function MagicDemo() {
     Record<string, string>
   >({});
   const [responses, setResponses] = useState<Record<string, ResponseRecord>>({});
+  const [demographics, setDemographics] = useState<Record<string, string> | null>(
+    null,
+  );
+  const [labs, setLabs] = useState<Record<string, Record<string, string>[]>>({});
   const [allFindings, setAllFindings] = useState<Finding[] | null>(null);
   const [running, setRunning] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -96,12 +101,24 @@ export function MagicDemo() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [eb, ef, ed] = await Promise.all([
+      const [eb, ef, ed, edm, elb] = await Promise.all([
         fetchCsv("ecrf_baseline.csv").then(parseCsv),
         fetchCsv("ecrf_followup.csv").then(parseCsv),
         fetchCsv("ecrf_disease_response.csv").then(parseCsv),
+        fetchCsv("ecrf_dm.csv").then(parseCsv),
+        fetchCsv("ecrf_lb.csv").then(parseCsv),
       ]);
       const subj = subject;
+      const dmRow = edm.find((r) => r.subject_id === subj) ?? null;
+      setDemographics(dmRow);
+
+      const labsByVisit: Record<string, Record<string, string>[]> = {};
+      for (const r of elb.filter((r) => r.subject_id === subj)) {
+        const v = r.visit || "";
+        if (!labsByVisit[v]) labsByVisit[v] = [];
+        labsByVisit[v].push(r);
+      }
+      setLabs(labsByVisit);
       const baselineRows = eb.filter((r) => r.subject_id === subj);
       const followupRows = ef.filter((r) => r.subject_id === subj);
       const responseRows = ed.filter((r) => r.subject_id === subj);
@@ -505,12 +522,16 @@ export function MagicDemo() {
 
           {loading ? (
             <SkeletonTwo />
+          ) : visit === "Screening" ? (
+            <Demographics dm={demographics} heroFinding={heroFinding} />
           ) : (
             <>
               <TumorAssessment
                 lesions={lesions}
                 visit={visit}
-                visitsThrough={visitsThroughCurrent}
+                visitsThrough={visitsThroughCurrent.filter(
+                  (v) => v !== "Screening",
+                )}
                 method={methods[visit] || ""}
                 onMethodChange={(v) =>
                   setMethods((prev) => ({ ...prev, [visit]: v }))
@@ -535,49 +556,52 @@ export function MagicDemo() {
                 />
               )}
 
-              {heroFinding && (
-                <IssueCallout
-                  finding={heroFinding}
-                  openCount={openFindings.length}
-                  onChangeToSd={() => changeToSD(heroFinding)}
-                  onApplyFix={() => applyFix(heroFinding)}
-                  onAcknowledge={() => acknowledge(heroFinding)}
-                  onFlag={() => {
-                    const rationale = prompt(
-                      "Add a brief rationale for flagging this for investigator review:",
-                      "",
-                    );
-                    if (rationale != null)
-                      flagForReview(heroFinding, rationale);
-                  }}
-                  onViewTrajectory={
-                    heroFinding.template_id === "RESPONSE_THRESHOLD"
-                      ? () => setChartFinding(heroFinding)
-                      : null
-                  }
-                  onSeeAll={
-                    openFindings.length + dispositionedFindings.length > 1
-                      ? () => setAllFindingsOpen(true)
-                      : null
-                  }
-                />
-              )}
-
-              {dispositionedFindings.length > 0 && (
-                <DispositionedSummary
-                  dispositionedFindings={dispositionedFindings}
-                  dispositions={dispositions}
-                  flagRationale={flagRationale}
-                  onSeeAll={() => setAllFindingsOpen(true)}
-                  hasOpen={openFindings.length > 0}
-                />
-              )}
-
-              {ran && visitFindings.length === 0 && (
-                <CleanVisit />
-              )}
+              <LabValues
+                rows={labs[visit] || []}
+                bilirubinHighlight={heroFinding?.rule_id === "LB-ADLB-001"}
+              />
             </>
           )}
+
+          {!loading && heroFinding && (
+            <IssueCallout
+              finding={heroFinding}
+              openCount={openFindings.length}
+              onChangeToSd={() => changeToSD(heroFinding)}
+              onApplyFix={() => applyFix(heroFinding)}
+              onAcknowledge={() => acknowledge(heroFinding)}
+              onFlag={() => {
+                const rationale = prompt(
+                  "Add a brief rationale for flagging this for investigator review:",
+                  "",
+                );
+                if (rationale != null)
+                  flagForReview(heroFinding, rationale);
+              }}
+              onViewTrajectory={
+                heroFinding.template_id === "RESPONSE_THRESHOLD"
+                  ? () => setChartFinding(heroFinding)
+                  : null
+              }
+              onSeeAll={
+                openFindings.length + dispositionedFindings.length > 1
+                  ? () => setAllFindingsOpen(true)
+                  : null
+              }
+            />
+          )}
+
+          {!loading && dispositionedFindings.length > 0 && (
+            <DispositionedSummary
+              dispositionedFindings={dispositionedFindings}
+              dispositions={dispositions}
+              flagRationale={flagRationale}
+              onSeeAll={() => setAllFindingsOpen(true)}
+              hasOpen={openFindings.length > 0}
+            />
+          )}
+
+          {!loading && ran && visitFindings.length === 0 && <CleanVisit />}
         </div>
       </div>
 
@@ -1479,6 +1503,213 @@ function CleanVisit() {
         No findings raised on this visit. Submit when ready.
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function Demographics({
+  dm,
+  heroFinding,
+}: {
+  dm: Record<string, string> | null;
+  heroFinding: Finding | null;
+}) {
+  const flagAge = heroFinding?.rule_id === "DM-001";
+  const flagConsent = heroFinding?.rule_id === "DM-002";
+  if (!dm) {
+    return (
+      <div className="text-2xs text-slate-500 italic">
+        No demographics on file for this subject.
+      </div>
+    );
+  }
+  const fields: { label: string; key: string; flagged?: boolean }[] = [
+    { label: "Age", key: "age", flagged: flagAge },
+    { label: "Age unit", key: "age_unit" },
+    { label: "Sex", key: "sex" },
+    { label: "Race", key: "race" },
+    { label: "Ethnicity", key: "ethnicity" },
+    { label: "Country", key: "country" },
+    { label: "Diagnosis", key: "diagnosis" },
+    { label: "Stage", key: "stage" },
+    { label: "ECOG", key: "ECOG" },
+    { label: "Prior systemic therapy lines", key: "prior_systemic_therapy_lines" },
+    { label: "Histology confirmed", key: "histology_confirmed" },
+    { label: "Measurable disease at baseline", key: "measurable_disease_at_baseline" },
+    {
+      label: "Informed consent date",
+      key: "informed_consent_date",
+      flagged: flagConsent,
+    },
+    { label: "Screening date", key: "screening_date", flagged: flagConsent },
+    { label: "Treatment start date", key: "treatment_start_date" },
+  ];
+  return (
+    <section>
+      <SectionHead
+        title="Demographics & Eligibility"
+        subtitle="One-time data captured at Screening. Drives DM domain and eligibility checks."
+      />
+      <div className="panel p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {fields.map((f) => (
+          <DmField
+            key={f.key}
+            label={f.label}
+            value={dm[f.key] ?? "—"}
+            flagged={!!f.flagged}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DmField({
+  label,
+  value,
+  flagged,
+}: {
+  label: string;
+  value: string;
+  flagged: boolean;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-1">
+        <span className="kicker">{label}</span>
+        {flagged && (
+          <span
+            aria-label="critical"
+            className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-sev-critical-600 text-white text-[9px] font-bold"
+          >
+            !
+          </span>
+        )}
+      </div>
+      <input
+        readOnly
+        value={value}
+        className={`field w-full h-9 text-sm ${
+          flagged
+            ? "is-flagged-critical border-sev-critical-500 bg-sev-critical-50"
+            : ""
+        }`}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function LabValues({
+  rows,
+  bilirubinHighlight,
+}: {
+  rows: Record<string, string>[];
+  bilirubinHighlight: boolean;
+}) {
+  if (rows.length === 0) {
+    return (
+      <section>
+        <SectionHead
+          title="Lab Values"
+          subtitle="Central lab results for this visit."
+        />
+        <div className="panel p-4 text-2xs text-slate-500 italic">
+          No lab results recorded for this visit.
+        </div>
+      </section>
+    );
+  }
+  const byPanel = new Map<string, Record<string, string>[]>();
+  for (const r of rows) {
+    const panel = r.lab_panel || "Other";
+    if (!byPanel.has(panel)) byPanel.set(panel, []);
+    byPanel.get(panel)!.push(r);
+  }
+  return (
+    <section>
+      <SectionHead
+        title="Lab Values"
+        subtitle="Central lab results for this visit. Abnormal flags shown inline."
+      />
+      <div className="space-y-3">
+        {Array.from(byPanel.entries()).map(([panel, panelRows]) => (
+          <div key={panel} className="panel overflow-hidden">
+            <div className="px-4 py-2 border-b border-stone-200 bg-stone-50 text-2xs font-medium text-slate-600 uppercase tracking-wider">
+              {panel}
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-white border-b border-stone-100">
+                  <th className="text-left px-4 py-1.5 kicker">Test</th>
+                  <th className="text-right px-4 py-1.5 kicker">Result</th>
+                  <th className="text-left px-4 py-1.5 kicker">Unit</th>
+                  <th className="text-left px-4 py-1.5 kicker">Reference</th>
+                  <th className="text-left px-4 py-1.5 kicker">Flag</th>
+                </tr>
+              </thead>
+              <tbody>
+                {panelRows.map((r, i) => {
+                  const isBili =
+                    r.test_code_raw === "BILI" || r.test_code_raw === "DBILI";
+                  const flagRow = bilirubinHighlight && isBili;
+                  const abnormal = (r.abnormal_flag || "").toUpperCase() !== "NORMAL";
+                  return (
+                    <tr
+                      key={i}
+                      className={`border-b border-stone-100 last:border-b-0 ${
+                        flagRow ? "bg-sev-critical-50/60" : ""
+                      }`}
+                    >
+                      <td className="px-4 py-1.5 text-sm">
+                        <span className="text-slate-800">
+                          {r.test_name_raw}
+                        </span>
+                        <span className="mono text-2xs text-slate-400 ml-2">
+                          {r.test_code_raw}
+                        </span>
+                      </td>
+                      <td
+                        className={`px-4 py-1.5 mono text-sm text-right ${
+                          flagRow
+                            ? "text-sev-critical-800 font-semibold"
+                            : abnormal
+                              ? "text-sev-warning-700"
+                              : "text-slate-800"
+                        }`}
+                      >
+                        {r.result_value}
+                      </td>
+                      <td className="px-4 py-1.5 mono text-2xs text-slate-600">
+                        {r.result_unit_raw}
+                      </td>
+                      <td className="px-4 py-1.5 mono text-2xs text-slate-500">
+                        {r.reference_low}–{r.reference_high} {r.reference_unit}
+                      </td>
+                      <td className="px-4 py-1.5">
+                        <span
+                          className={`text-2xs px-1.5 py-0.5 rounded border ${
+                            flagRow
+                              ? "bg-sev-critical-50 text-sev-critical-700 border-sev-critical-300"
+                              : abnormal
+                                ? "bg-sev-warning-50 text-sev-warning-700 border-sev-warning-300"
+                                : "bg-stone-50 text-slate-500 border-stone-200"
+                          }`}
+                        >
+                          {r.abnormal_flag || "—"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

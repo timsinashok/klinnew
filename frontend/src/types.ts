@@ -57,3 +57,62 @@ export interface Stats {
   total_visits_completed: number;
   total_visits_planned: number;
 }
+
+export interface ProtocolCheck {
+  check_id: string;
+  protocol_section: string;
+  layer: string;
+  domain_scope: string;
+  variables_or_fields: string;
+  plain_english_rule: string;
+  logic_or_threshold: string;
+  severity_when_failed: string;
+  demo_action: string;
+  error_message_template: string;
+}
+
+export interface ProtocolSection {
+  section: string;
+  title: string;
+  protocol_text: string;
+  data_needed: string;
+  domains_impacted: string;
+  check_ids: string[];
+  checks: ProtocolCheck[];
+}
+
+export interface ProtocolResponse {
+  study_id: string;
+  title: string;
+  sections: ProtocolSection[];
+  all_checks: ProtocolCheck[];
+}
+
+export interface SourceMapping {
+  file_name: string;
+  target_domain: string;
+  target_fields: string;
+  source_fields: string;
+}
+
+export interface SourceDocument {
+  source_document_id: string;
+  subject_id: string;
+  visit: string;
+  document_type: string;
+  document_date: string;
+  page_title: string;
+  source_text: string;
+  maps_to_domains: string;
+  mappings: SourceMapping[];
+  ecrf_consumer_rows: number;
+}
+
+export interface SourcesResponse {
+  documents: SourceDocument[];
+}
+
+export interface DomainRow extends Record<string, unknown> {}
+export interface DomainResponse {
+  rows: DomainRow[];
+}
