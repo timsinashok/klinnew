@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchStats, runEngine } from "../api";
 import { SeverityChip } from "../components/SeverityBadge";
+import {
+  clearAllDemoState,
+  loadIngested,
+  loadSubmissions,
+} from "../lib/persistence";
 import type { Finding, Severity, Stats, SubjectStat } from "../types";
 import { SEV_BADGE_CLASS, SEV_RANK } from "../ui/tokens";
 
@@ -48,6 +53,27 @@ export function Workspace() {
     return m;
   }, [findings]);
 
+  // Demo state: what visits have actually been submitted in this browser?
+  const localState = useMemo(() => {
+    const m = new Map<
+      string,
+      { submitted: Set<string>; ingested: Set<string> }
+    >();
+    for (const s of stats?.subjects ?? []) {
+      m.set(s.subject_id, {
+        submitted: new Set(loadSubmissions(s.subject_id)),
+        ingested: new Set(loadIngested(s.subject_id)),
+      });
+    }
+    return m;
+  }, [stats]);
+
+  const localVisitsSubmitted = useMemo(() => {
+    let n = 0;
+    for (const v of localState.values()) n += v.submitted.size;
+    return n;
+  }, [localState]);
+
   const findingsStream = useMemo(() => {
     return [...(findings || [])]
       .sort((a, b) => {
@@ -76,7 +102,11 @@ export function Workspace() {
 
         <KpiStrip
           totalSubjects={stats?.total_subjects ?? 0}
-          visitsDone={stats?.total_visits_completed ?? 0}
+          visitsDone={
+            localVisitsSubmitted > 0
+              ? localVisitsSubmitted
+              : (stats?.total_visits_completed ?? 0)
+          }
           visitsPlanned={stats?.total_visits_planned ?? 0}
           counts={counts}
           loading={findings === null}
@@ -90,6 +120,7 @@ export function Workspace() {
           <SubjectRoster
             subjects={stats?.subjects}
             findingsBySubject={findingsBySubject}
+            localState={localState}
             loading={stats === null}
           />
           <FindingsStream
@@ -137,6 +168,22 @@ function StudyHeader({
               last run {elapsedMs} ms
             </span>
           )}
+          <button
+            className="btn"
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Reset the demo? This clears all submissions, edits, and resets to the protocol-upload splash.",
+                )
+              ) {
+                clearAllDemoState();
+                window.location.assign("/");
+              }
+            }}
+            title="Clear all demo state and return to the protocol upload splash"
+          >
+            Reset demo
+          </button>
           <button
             className="btn btn-primary"
             onClick={onRun}
@@ -257,10 +304,12 @@ function Dot({ tone }: { tone: "critical" | "warning" | "suggested" }) {
 function SubjectRoster({
   subjects,
   findingsBySubject,
+  localState,
   loading,
 }: {
   subjects: SubjectStat[] | undefined;
   findingsBySubject: Map<string, Finding[]>;
+  localState: Map<string, { submitted: Set<string>; ingested: Set<string> }>;
   loading: boolean;
 }) {
   return (
@@ -354,8 +403,28 @@ function SubjectRoster({
                   <td className="px-4 py-3">
                     <VisitDots
                       planned={s.visits_planned}
-                      completed={s.visits_completed}
+                      completed={
+                        Array.from(
+                          localState.get(s.subject_id)?.submitted ?? new Set(),
+                        )
+                      }
                     />
+                    {(() => {
+                      const sub = localState.get(s.subject_id);
+                      const awaitingCount =
+                        s.visits_planned.length - (sub?.submitted.size ?? 0);
+                      if (!sub || awaitingCount === 0) return null;
+                      const ingested = sub.ingested.size - sub.submitted.size;
+                      return (
+                        <div className="mt-1">
+                          <span className="text-2xs px-1.5 py-0.5 rounded border border-accent-200 bg-accent-50 text-accent-700">
+                            {ingested > 0
+                              ? "Awaiting submission"
+                              : "Awaiting documents"}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">

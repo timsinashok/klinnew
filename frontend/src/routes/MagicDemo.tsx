@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { fetchCsv, parseCsv, runEngine } from "../api";
+import { fetchCsv, fetchSources, parseCsv, runEngine } from "../api";
+import { AwaitingSourceDocs } from "../components/AwaitingSourceDocs";
 import { ChartTemplate } from "../components/ChartTemplate";
 import { SeverityChip } from "../components/SeverityBadge";
+import { SourceUploadModal } from "../components/SourceUploadModal";
 import {
   clearSubmissions,
+  loadIngested,
   loadSubmissions,
+  saveIngested,
   saveSubmissions,
+  seedPriorVisits,
 } from "../lib/persistence";
-import type { Finding } from "../types";
+import type { Finding, SourceDocument } from "../types";
 import { SEV_RANK } from "../ui/tokens";
 
 const VISITS = [
@@ -94,7 +99,10 @@ export function MagicDemo() {
   const [chartFinding, setChartFinding] = useState<Finding | null>(null);
   const [allFindingsOpen, setAllFindingsOpen] = useState(false);
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
+  const [ingested, setIngested] = useState<Set<string>>(new Set());
   const [justSubmitted, setJustSubmitted] = useState<string | null>(null);
+  const [sourceDocs, setSourceDocs] = useState<SourceDocument[]>([]);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const lastSubjectVisit = useRef<string>("");
 
   // Load data once.
@@ -220,11 +228,45 @@ export function MagicDemo() {
     load();
   }, [load]);
 
-  // Load submission state for this subject from localStorage.
+  // Load submission + ingest state for this subject from localStorage.
   useEffect(() => {
     setSubmitted(new Set(loadSubmissions(subject)));
+    setIngested(new Set(loadIngested(subject)));
     setJustSubmitted(null);
   }, [subject]);
+
+  // Load source-doc catalog once.
+  useEffect(() => {
+    fetchSources()
+      .then((r) => setSourceDocs(r.documents))
+      .catch(() => setSourceDocs([]));
+  }, []);
+
+  // Seed prior visits per subject on first load — uses /api/run findings
+  // to identify the "demo visit" (highest-severity for that subject) and
+  // marks everything before it as submitted + ingested.
+  useEffect(() => {
+    if (!allFindings) return;
+    const already = loadSubmissions(subject);
+    if (already.length > 0) return; // user has touched this subject already
+    const subjectFindings = allFindings.filter(
+      (f) => f.subject_id === subject,
+    );
+    if (subjectFindings.length === 0) return;
+    const sorted = [...subjectFindings].sort(
+      (a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity],
+    );
+    const demoVisit = (sorted[0].visit || "") as Visit;
+    if (!demoVisit) return;
+    const demoIdx = VISITS.indexOf(demoVisit);
+    const prior = VISITS.slice(0, demoIdx).filter((v) => v !== demoVisit);
+    if (prior.length === 0) return;
+    seedPriorVisits(subject, prior as unknown as string[]);
+    setSubmitted(new Set([...already, ...prior]));
+    setIngested(
+      new Set([...loadIngested(subject), ...prior]),
+    );
+  }, [allFindings, subject]);
 
   // Findings for this subject — used elsewhere for trajectory dots and the
   // workspace dashboard.
@@ -254,7 +296,23 @@ export function MagicDemo() {
   }, [visitParam, submitted, nextVisit]);
 
   const visitSubmitted = submitted.has(visit);
+  const visitIngested = ingested.has(visit) || visit === "Screening";
   const endOfStudy = nextVisit === null;
+
+  // Source documents available for the current (subject, visit) pair.
+  const visitSourceDocs = useMemo(() => {
+    return sourceDocs.filter(
+      (d) => d.subject_id === subject && d.visit === visit,
+    );
+  }, [sourceDocs, subject, visit]);
+
+  const completeIngest = () => {
+    const next = new Set(ingested);
+    next.add(visit);
+    setIngested(next);
+    saveIngested(subject, Array.from(next));
+    setUploadOpen(false);
+  };
 
   // Reset dispositions when subject/visit changes.
   useEffect(() => {
@@ -524,6 +582,13 @@ export function MagicDemo() {
             <SkeletonTwo />
           ) : visit === "Screening" ? (
             <Demographics dm={demographics} heroFinding={heroFinding} />
+          ) : !visitIngested && !visitSubmitted ? (
+            <AwaitingSourceDocs
+              subject={subject}
+              visit={visit}
+              docs={visitSourceDocs}
+              onUpload={() => setUploadOpen(true)}
+            />
           ) : (
             <>
               <TumorAssessment
@@ -636,6 +701,15 @@ export function MagicDemo() {
             setAllFindingsOpen(false);
             setChartFinding(f);
           }}
+        />
+      )}
+      {uploadOpen && (
+        <SourceUploadModal
+          subject={subject}
+          visit={visit}
+          docs={visitSourceDocs}
+          onClose={() => setUploadOpen(false)}
+          onComplete={completeIngest}
         />
       )}
     </div>

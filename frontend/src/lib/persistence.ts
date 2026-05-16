@@ -87,3 +87,69 @@ export function clearSubmissions(subjectId: string): void {
   if (typeof localStorage === "undefined") return;
   localStorage.removeItem(SUBMIT_KEY_PREFIX + subjectId);
 }
+
+// --- ingested visits (source documents processed) -------------------------
+
+const INGEST_KEY_PREFIX = "klin.v0.ingested.";
+
+export function loadIngested(subjectId: string): string[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(INGEST_KEY_PREFIX + subjectId);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveIngested(subjectId: string, visits: string[]): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(
+      INGEST_KEY_PREFIX + subjectId,
+      JSON.stringify(visits),
+    );
+  } catch {
+    /* quota */
+  }
+}
+
+// --- protocol upload gate -------------------------------------------------
+
+const PROTOCOL_KEY = "klin.v0.protocol_uploaded";
+
+export function isProtocolUploaded(): boolean {
+  if (typeof localStorage === "undefined") return false;
+  return localStorage.getItem(PROTOCOL_KEY) === "true";
+}
+
+export function markProtocolUploaded(): void {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(PROTOCOL_KEY, "true");
+}
+
+// --- demo seeding ---------------------------------------------------------
+
+/** Mark the visits prior to a subject's "demo visit" as already submitted
+ *  and ingested. Idempotent. */
+export function seedPriorVisits(
+  subjectId: string,
+  priorVisits: string[],
+): void {
+  const submitted = loadSubmissions(subjectId);
+  const ingested = loadIngested(subjectId);
+  const submittedSet = new Set([...submitted, ...priorVisits]);
+  const ingestedSet = new Set([...ingested, ...priorVisits]);
+  saveSubmissions(subjectId, Array.from(submittedSet));
+  saveIngested(subjectId, Array.from(ingestedSet));
+}
+
+export function clearAllDemoState(): void {
+  if (typeof localStorage === "undefined") return;
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("klin.v0")) keys.push(k);
+  }
+  for (const k of keys) localStorage.removeItem(k);
+}
