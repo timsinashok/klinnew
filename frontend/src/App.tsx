@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -6,7 +7,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { AppShell } from "./components/shell/AppShell";
-import { isProtocolUploaded } from "./lib/persistence";
+import { hydrateStudyFromServer, isProtocolUploaded } from "./lib/persistence";
 import {
   DEMO_STUDY,
   getStudy,
@@ -27,6 +28,11 @@ import { Workspace } from "./routes/Workspace";
 function StudyGuard({ children }: { children: React.ReactNode }) {
   const { studyId = "" } = useParams<{ studyId: string }>();
   const study = getStudy(studyId);
+  // Hydrate the localStorage cache from the server snapshot when the
+  // active study changes. Best-effort; no-op when the API is offline.
+  useEffect(() => {
+    if (study) hydrateStudyFromServer(study.id);
+  }, [study?.id]);
   if (!study) return <Navigate to="/platform" replace />;
   // Side-effect: keep localStorage current_study in sync with the URL so
   // sub-components that still read it (UtilityBar, persistence helpers,

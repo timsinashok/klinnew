@@ -3,7 +3,17 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import data, domains, protocol, run, sources, stats, translate
+from api.db import init_schema
+from api.routes import (
+    data,
+    domains,
+    protocol,
+    run,
+    sources,
+    state,
+    stats,
+    translate,
+)
 
 app = FastAPI(title="Klin Oncology Consistency Engine")
 
@@ -33,6 +43,13 @@ app.include_router(stats.router, prefix="/api")
 app.include_router(protocol.router, prefix="/api")
 app.include_router(sources.router, prefix="/api")
 app.include_router(domains.router, prefix="/api")
+app.include_router(state.router, prefix="/api")
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    # Idempotent — no-op if DATABASE_URL is unset.
+    init_schema()
 
 
 @app.get("/api/health")
