@@ -31,7 +31,9 @@ if extra:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=LOCAL_ORIGINS,
-    allow_origin_regex=r"https://.*\.vercel\.app$",
+    # Match any *.vercel.app preview/prod and the klinai.tech apex + any
+    # subdomain. Add more here (or set FRONTEND_ORIGIN) as new domains land.
+    allow_origin_regex=r"https://([a-z0-9-]+\.)*(vercel\.app|klinai\.tech)$",
     allow_methods=["*"],
     allow_headers=["*"],
 )
